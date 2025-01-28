@@ -23,7 +23,6 @@ import org.junit.After;
 import org.junit.AfterClass;
 import org.junit.Before;
 import org.junit.BeforeClass;
-import org.keycloak.OAuth2Constants;
 import org.keycloak.models.UserModel;
 import org.keycloak.representations.idm.RealmRepresentation;
 import org.keycloak.representations.idm.UserRepresentation;
@@ -38,7 +37,6 @@ import org.keycloak.testsuite.util.URLUtils;
 import org.keycloak.testsuite.util.UserBuilder;
 import org.openqa.selenium.Cookie;
 
-import static org.hamcrest.Matchers.is;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
@@ -153,7 +151,7 @@ public abstract class AbstractFailoverClusterTest extends AbstractClusterTest {
 
     protected Cookie verifyLoggedIn(Cookie sessionCookieForVerification) {
         // verify on realm path
-        URLUtils.navigateToUri(AUTH_SERVER_ROOT + "/realms/test");
+        URLUtils.navigateToUri(AUTH_SERVER_ROOT + "/realms/test/");
         Cookie sessionCookieOnRealmPath = driver.manage().getCookieNamed(KEYCLOAK_SESSION_COOKIE);
         assertNotNull(sessionCookieOnRealmPath);
         assertEquals(sessionCookieOnRealmPath.getValue(), sessionCookieForVerification.getValue());

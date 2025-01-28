@@ -1,4 +1,3 @@
-import { v4 as uuid } from "uuid";
 import LoginPage from "../support/pages/LoginPage";
 import Masthead from "../support/pages/admin-ui/Masthead";
 import ModalUtils from "../support/util/ModalUtils";
@@ -47,7 +46,7 @@ describe("Realm roles test", () => {
   });
 
   it("Realm role CRUD test", () => {
-    itemId += "_" + uuid();
+    itemId += "_" + crypto.randomUUID();
 
     // Create
     listingPage.itemExist(itemId, false).goToCreateItem();
@@ -70,7 +69,7 @@ describe("Realm roles test", () => {
   });
 
   it("should delete role from details action", () => {
-    itemId += "_" + uuid();
+    itemId += "_" + crypto.randomUUID();
     listingPage.goToCreateItem();
     createRealmRolePage.fillRealmRoleData(itemId).save();
     masthead.checkNotificationMessage("Role created", true);
@@ -90,7 +89,7 @@ describe("Realm roles test", () => {
   });
 
   it("Add associated roles test", () => {
-    itemId += "_" + uuid();
+    itemId += "_" + crypto.randomUUID();
 
     // Create
     listingPage.itemExist(itemId, false).goToCreateItem();
@@ -127,14 +126,31 @@ describe("Realm roles test", () => {
     masthead.checkNotificationMessage("Associated roles have been added", true);
   });
 
-  it("Should search existing associated role by name", () => {
-    listingPage.searchItem("create-realm", false).itemExist("create-realm");
+  it("should search existing associated role by name and go to it", () => {
+    listingPage
+      .searchItem("create-realm", false)
+      .itemExist("create-realm")
+      .goToItemDetails("create-realm");
+
+    cy.findByTestId("view-header").should("contain.text", "create-realm");
+    cy.findByTestId("cancel").click();
+  });
+
+  it("should go to default-roles-master link role name and check assign roles table is not empty", () => {
+    listingPage.goToItemDetails("default-roles-master");
+
+    rolesTab.goToDefaultGroupsTab();
+    cy.findByTestId("assigned-roles").find("tr").should("have.length.gt", 0);
+    cy.findByTestId("empty-state").contains("No default groups");
+
+    rolesTab.goToDefaultRolesTab();
+    cy.findByTestId("assigned-roles").find("tr").should("have.length.gt", 0);
   });
 
   it("Should search non-existent associated role by name", () => {
     const itemName = "non-existent-associated-role";
     listingPage.searchItem(itemName, false);
-    cy.findByTestId(listingPage.emptyState).should("exist");
+    listingPage.assertNoResults();
   });
 
   it("Should hide inherited roles test", () => {
@@ -157,10 +173,7 @@ describe("Realm roles test", () => {
     modalUtils.checkModalTitle("Remove role?").confirmModal();
     sidebarPage.waitForPageLoad();
 
-    masthead.checkNotificationMessage(
-      "Scope mapping successfully removed",
-      true,
-    );
+    masthead.checkNotificationMessage("Role mapping updated", true);
   });
 
   it("Should delete all roles from search bar", () => {
@@ -176,15 +189,12 @@ describe("Realm roles test", () => {
     modalUtils.checkModalTitle("Remove role?").confirmModal();
     sidebarPage.waitForPageLoad();
 
-    masthead.checkNotificationMessage(
-      "Scope mapping successfully removed",
-      true,
-    );
+    masthead.checkNotificationMessage("Role mapping updated", true);
   });
 
   it("Should delete associated roles from list test", () => {
     itemId = "realm_role_crud";
-    itemId += "_" + uuid();
+    itemId += "_" + crypto.randomUUID();
 
     // Create
     listingPage.itemExist(itemId, false).goToCreateItem();
@@ -207,19 +217,13 @@ describe("Realm roles test", () => {
     modalUtils.checkModalTitle("Remove role?").confirmModal();
     sidebarPage.waitForPageLoad();
 
-    masthead.checkNotificationMessage(
-      "Scope mapping successfully removed",
-      true,
-    );
+    masthead.checkNotificationMessage("Role mapping updated", true);
     listingPage.removeItem("offline_access");
     sidebarPage.waitForPageLoad();
     modalUtils.checkModalTitle("Remove role?").confirmModal();
     sidebarPage.waitForPageLoad();
 
-    masthead.checkNotificationMessage(
-      "Scope mapping successfully removed",
-      true,
-    );
+    masthead.checkNotificationMessage("Role mapping updated", true);
   });
 
   describe("edit role details", () => {
@@ -245,6 +249,7 @@ describe("Realm roles test", () => {
     });
 
     const keyValue = new KeyValueInput("attributes");
+
     it("should add attribute", () => {
       listingPage.itemExist(editRoleName).goToItemDetails(editRoleName);
 
@@ -283,8 +288,17 @@ describe("Realm roles test", () => {
     });
 
     const role = "a11y-role";
+    const defaultRolesMaster = "default-roles-master";
 
     it("Check a11y violations on load/ realm roles", () => {
+      cy.checkA11y();
+    });
+
+    it("Check a11y violations on default-roles-master default tab and default roles tabs", () => {
+      listingPage.goToItemDetails(defaultRolesMaster);
+      cy.checkA11y();
+
+      rolesTab.goToDefaultGroupsTab();
       cy.checkA11y();
     });
 

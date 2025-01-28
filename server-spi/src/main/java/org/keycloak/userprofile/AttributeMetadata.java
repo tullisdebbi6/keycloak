@@ -35,7 +35,7 @@ import org.keycloak.sessions.AuthenticationSessionModel;
 /**
  * @author <a href="mailto:psilva@redhat.com">Pedro Igor</a>
  */
-public final class AttributeMetadata {
+public class AttributeMetadata {
 
     public static final Predicate<AttributeContext> ALWAYS_TRUE = context -> true;
     public static final Predicate<AttributeContext> ALWAYS_FALSE = context -> false;
@@ -43,7 +43,7 @@ public final class AttributeMetadata {
     private final String attributeName;
     private String attributeDisplayName;
     private AttributeGroupMetadata attributeGroupMetadata;
-    private final Predicate<AttributeContext> selector;
+    private Predicate<AttributeContext> selector;
     private final List<Predicate<AttributeContext>> writeAllowed = new ArrayList<>();
     /** Predicate to decide if attribute is required, it is handled as required if predicate is null */
     private Predicate<AttributeContext> required;
@@ -51,7 +51,8 @@ public final class AttributeMetadata {
     private List<AttributeValidatorMetadata> validators;
     private Map<String, Object> annotations;
     private int guiOrder;
-    
+    private boolean multivalued;
+
 
     AttributeMetadata(String attributeName, int guiOrder) {
         this(attributeName, guiOrder, ALWAYS_TRUE, ALWAYS_TRUE, ALWAYS_TRUE, ALWAYS_TRUE);
@@ -131,6 +132,10 @@ public final class AttributeMetadata {
         return selector.test(context);
     }
 
+    public void setSelector(Predicate<AttributeContext> selector) {
+        this.selector = selector;
+    }
+
     private boolean allConditionsMet(List<Predicate<AttributeContext>> predicates, AttributeContext context) {
         return predicates.stream().allMatch(p -> p.test(context));
     }
@@ -195,9 +200,17 @@ public final class AttributeMetadata {
         return this;
     }
 
+    public void setMultivalued(boolean multivalued) {
+        this.multivalued = multivalued;
+    }
+
+    public boolean isMultivalued() {
+        return multivalued;
+    }
+
     @Override
     public AttributeMetadata clone() {
-        AttributeMetadata cloned = new AttributeMetadata(attributeName, guiOrder, selector, writeAllowed, required, readAllowed);
+        AttributeMetadata cloned = new AttributeMetadata(attributeName, guiOrder, selector, new ArrayList<>(writeAllowed), required, new ArrayList<>(readAllowed));
         // we clone validators list to allow adding or removing validators. Validators
         // itself are not cloned as we do not expect them to be reconfigured.
         if (validators != null) {
@@ -211,9 +224,10 @@ public final class AttributeMetadata {
         if (attributeGroupMetadata != null) {
             cloned.setAttributeGroupMetadata(attributeGroupMetadata.clone());
         }
+        cloned.setMultivalued(multivalued);
         return cloned;
     }
-    
+
     public String getAttributeDisplayName() {
         if(attributeDisplayName == null || attributeDisplayName.trim().isEmpty())
             return attributeName;

@@ -19,6 +19,8 @@ package org.keycloak.authorization;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
@@ -40,11 +42,14 @@ import org.keycloak.authorization.store.ResourceStore;
 import org.keycloak.authorization.store.ScopeStore;
 import org.keycloak.authorization.store.StoreFactory;
 import org.keycloak.models.KeycloakSession;
+import org.keycloak.models.ModelValidationException;
 import org.keycloak.models.RealmModel;
 import org.keycloak.models.cache.authorization.CachedStoreFactoryProvider;
 import org.keycloak.models.utils.RepresentationToModel;
 import org.keycloak.provider.Provider;
 import org.keycloak.representations.idm.authorization.AbstractPolicyRepresentation;
+import org.keycloak.representations.idm.authorization.AuthorizationSchema;
+import org.keycloak.representations.idm.authorization.ScopePermissionRepresentation;
 
 /**
  * <p>The main contract here is the creation of {@link org.keycloak.authorization.permission.evaluator.PermissionEvaluator} instances.  Usually
@@ -250,21 +255,21 @@ public final class AuthorizationProvider implements Provider {
             }
 
             @Override
-            public void delete(RealmModel realm, String id) {
-                Scope scope = findById(realm, null, id);
+            public void delete(String id) {
+                Scope scope = findById(null, id);
                 PermissionTicketStore ticketStore = AuthorizationProvider.this.getStoreFactory().getPermissionTicketStore();
                 List<PermissionTicket> permissions = ticketStore.findByScope(scope.getResourceServer(), scope);
 
                 for (PermissionTicket permission : permissions) {
-                    ticketStore.delete(realm, permission.getId());
+                    ticketStore.delete(permission.getId());
                 }
 
-                delegate.delete(realm, id);
+                delegate.delete(id);
             }
 
             @Override
-            public Scope findById(RealmModel realm, ResourceServer resourceServer, String id) {
-                return delegate.findById(realm, resourceServer, id);
+            public Scope findById(ResourceServer resourceServer, String id) {
+                return delegate.findById(resourceServer, id);
             }
 
             @Override
@@ -291,49 +296,44 @@ public final class AuthorizationProvider implements Provider {
 
             @Override
             public Policy create(ResourceServer resourceServer, AbstractPolicyRepresentation representation) {
+                AdminPermissionsSchema.SCHEMA.throwExceptionIfResourceTypeOrScopesNotProvided(keycloakSession, resourceServer, representation);
                 Set<String> resources = representation.getResources();
-                RealmModel realm = resourceServer.getRealm();
 
                 if (resources != null) {
                     representation.setResources(resources.stream().map(id -> {
-                        Resource resource = storeFactory.getResourceStore().findById(realm, resourceServer, id);
+                        Resource resource = AdminPermissionsSchema.SCHEMA.getOrCreateResource(keycloakSession, resourceServer, representation.getResourceType(), id);
 
                         if (resource == null) {
-                            resource = storeFactory.getResourceStore().findByName(resourceServer, id);
+                            resource = storeFactory.getResourceStore().findById(resourceServer, id);
+
+                            if (resource == null) {
+                                resource = storeFactory.getResourceStore().findByName(resourceServer, id);
+                            }
+
+                            if (resource == null) {
+                                throw new RuntimeException("Resource [" + id + "] does not exist or is not owned by the resource server.");
+                            }
+
+                            return resource.getId();
                         }
 
-                        if (resource == null) {
-                            throw new RuntimeException("Resource [" + id + "] does not exist or is not owned by the resource server.");
-                        }
-
-                        return resource.getId();
-                    }).collect(Collectors.toSet()));
+                        return Optional.ofNullable(resource).map(Resource::getId).orElse(null);
+                    }).filter(Objects::nonNull).collect(Collectors.toSet()));
                 }
 
                 Set<String> scopes = representation.getScopes();
 
                 if (scopes != null) {
-                    representation.setScopes(scopes.stream().map(id -> {
-                        Scope scope = storeFactory.getScopeStore().findById(realm, resourceServer, id);
-
-                        if (scope == null) {
-                            scope = storeFactory.getScopeStore().findByName(resourceServer, id);
-                        }
-
-                        if (scope == null) {
-                            throw new RuntimeException("Scope [" + id + "] does not exist");
-                        }
-
-                        return scope.getId();
-                    }).collect(Collectors.toSet()));
+                    representation.setScopes(scopes.stream()
+                        .map(id -> AdminPermissionsSchema.SCHEMA.getScope(keycloakSession, resourceServer, representation.getResourceType(), id).getId())
+                        .collect(Collectors.toSet()));
                 }
-
 
                 Set<String> policies = representation.getPolicies();
 
                 if (policies != null) {
                     representation.setPolicies(policies.stream().map(id -> {
-                        Policy policy = storeFactory.getPolicyStore().findById(realm, resourceServer, id);
+                        Policy policy = storeFactory.getPolicyStore().findById(resourceServer, id);
 
                         if (policy == null) {
                             policy = storeFactory.getPolicyStore().findByName(resourceServer, id);
@@ -351,8 +351,8 @@ public final class AuthorizationProvider implements Provider {
             }
 
             @Override
-            public void delete(RealmModel realm, String id) {
-                Policy policy = findById(realm, null, id);
+            public void delete(String id) {
+                Policy policy = findById(null, id);
 
                 if (policy != null) {
                     ResourceServer resourceServer = policy.getResourceServer();
@@ -363,7 +363,7 @@ public final class AuthorizationProvider implements Provider {
                             // only remove associated policies created from the policy being deleted
                             if (associatedPolicy.getOwner() != null) {
                                 policy.removeAssociatedPolicy(associatedPolicy);
-                                policyStore.delete(realm, associatedPolicy.getId());
+                                policyStore.delete(associatedPolicy.getId());
                             }
                         }
                     }
@@ -371,17 +371,17 @@ public final class AuthorizationProvider implements Provider {
                     findDependentPolicies(resourceServer, policy.getId()).forEach(dependentPolicy -> {
                         dependentPolicy.removeAssociatedPolicy(policy);
                         if (dependentPolicy.getAssociatedPolicies().isEmpty()) {
-                            delete(realm, dependentPolicy.getId());
+                            delete(dependentPolicy.getId());
                         }
                     });
 
-                    policyStore.delete(realm, id);
+                    policyStore.delete(id);
                 }
             }
 
             @Override
-            public Policy findById(RealmModel realm, ResourceServer resourceServer, String id) {
-                return policyStore.findById(realm, resourceServer, id);
+            public Policy findById(ResourceServer resourceServer, String id) {
+                return policyStore.findById(resourceServer, id);
             }
 
             @Override
@@ -395,8 +395,8 @@ public final class AuthorizationProvider implements Provider {
             }
 
             @Override
-            public List<Policy> find(RealmModel realm, ResourceServer resourceServer, Map<Policy.FilterOption, String[]> attributes, Integer firstResult, Integer maxResults) {
-                return policyStore.find(realm, resourceServer, attributes, firstResult, maxResults);
+            public List<Policy> find(ResourceServer resourceServer, Map<Policy.FilterOption, String[]> attributes, Integer firstResult, Integer maxResults) {
+                return policyStore.find(resourceServer, attributes, firstResult, maxResults);
             }
 
             @Override
@@ -461,14 +461,14 @@ public final class AuthorizationProvider implements Provider {
             }
 
             @Override
-            public void delete(RealmModel realm, String id) {
-                Resource resource = findById(realm, null, id);
+            public void delete(String id) {
+                Resource resource = findById(null, id);
                 StoreFactory storeFactory = AuthorizationProvider.this.getStoreFactory();
                 PermissionTicketStore ticketStore = storeFactory.getPermissionTicketStore();
                 List<PermissionTicket> permissions = ticketStore.findByResource(resource.getResourceServer(), resource);
 
                 for (PermissionTicket permission : permissions) {
-                    ticketStore.delete(realm, permission.getId());
+                    ticketStore.delete(permission.getId());
                 }
 
                 PolicyStore policyStore = storeFactory.getPolicyStore();
@@ -476,28 +476,28 @@ public final class AuthorizationProvider implements Provider {
 
                 for (Policy policyModel : policies) {
                     if (policyModel.getResources().size() == 1) {
-                        policyStore.delete(realm, policyModel.getId());
+                        policyStore.delete(policyModel.getId());
                     } else {
                         policyModel.removeResource(resource);
                     }
                 }
 
-                delegate.delete(realm, id);
+                delegate.delete(id);
             }
 
             @Override
-            public Resource findById(RealmModel realm, ResourceServer resourceServer, String id) {
-                return delegate.findById(realm, resourceServer, id);
+            public Resource findById(ResourceServer resourceServer, String id) {
+                return delegate.findById(resourceServer, id);
             }
 
             @Override
-            public List<Resource> findByOwner(RealmModel realm, ResourceServer resourceServer, String ownerId) {
-                return delegate.findByOwner(realm, resourceServer, ownerId);
+            public List<Resource> findByOwner(ResourceServer resourceServer, String ownerId) {
+                return delegate.findByOwner(resourceServer, ownerId);
             }
 
             @Override
-            public void findByOwner(RealmModel realm, ResourceServer resourceServer, String ownerId, Consumer<Resource> consumer) {
-                delegate.findByOwner(realm, resourceServer, ownerId, consumer);
+            public void findByOwner(ResourceServer resourceServer, String ownerId, Consumer<Resource> consumer) {
+                delegate.findByOwner(resourceServer, ownerId, consumer);
             }
 
             @Override
@@ -506,8 +506,8 @@ public final class AuthorizationProvider implements Provider {
             }
 
             @Override
-            public List<Resource> find(RealmModel realm, ResourceServer resourceServer, Map<Resource.FilterOption, String[]> attributes, Integer firstResult, Integer maxResults) {
-                return delegate.find(realm, resourceServer, attributes, firstResult, maxResults);
+            public List<Resource> find(ResourceServer resourceServer, Map<Resource.FilterOption, String[]> attributes, Integer firstResult, Integer maxResults) {
+                return delegate.find(resourceServer, attributes, firstResult, maxResults);
             }
 
             @Override

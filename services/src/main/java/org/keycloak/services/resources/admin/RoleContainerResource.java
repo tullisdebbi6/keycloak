@@ -20,9 +20,11 @@ package org.keycloak.services.resources.admin;
 import org.eclipse.microprofile.openapi.annotations.Operation;
 import org.eclipse.microprofile.openapi.annotations.extensions.Extension;
 import org.eclipse.microprofile.openapi.annotations.parameters.Parameter;
+import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
 import org.eclipse.microprofile.openapi.annotations.tags.Tag;
-import org.jboss.resteasy.annotations.cache.NoCache;
-import jakarta.ws.rs.NotFoundException;
+import org.jboss.resteasy.reactive.NoCache;
+import org.keycloak.common.Profile;
+import org.keycloak.common.util.Encode;
 import org.keycloak.events.admin.OperationType;
 import org.keycloak.events.admin.ResourceType;
 import org.keycloak.models.ClientModel;
@@ -33,9 +35,7 @@ import org.keycloak.models.RealmModel;
 import org.keycloak.models.RoleContainerModel;
 import org.keycloak.models.RoleModel;
 import org.keycloak.models.UserModel;
-import org.keycloak.models.utils.KeycloakModelUtils;
 import org.keycloak.models.utils.ModelToRepresentation;
-import org.keycloak.models.utils.RoleUtils;
 import org.keycloak.representations.idm.GroupRepresentation;
 import org.keycloak.representations.idm.ManagementPermissionReference;
 import org.keycloak.representations.idm.RoleRepresentation;
@@ -45,12 +45,14 @@ import org.keycloak.services.resources.KeycloakOpenAPI;
 import org.keycloak.services.resources.admin.permissions.AdminPermissionEvaluator;
 import org.keycloak.services.resources.admin.permissions.AdminPermissionManagement;
 import org.keycloak.services.resources.admin.permissions.AdminPermissions;
+import org.keycloak.utils.ProfileHelper;
 
 import jakarta.ws.rs.BadRequestException;
 import jakarta.ws.rs.Consumes;
 import jakarta.ws.rs.DELETE;
 import jakarta.ws.rs.DefaultValue;
 import jakarta.ws.rs.GET;
+import jakarta.ws.rs.NotFoundException;
 import jakarta.ws.rs.POST;
 import jakarta.ws.rs.PUT;
 import jakarta.ws.rs.Path;
@@ -66,9 +68,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.function.Function;
-import java.util.stream.Collectors;
 import java.util.stream.Stream;
-import org.keycloak.services.ErrorResponseException;
 
 /**
  * @resource Roles
@@ -142,7 +142,7 @@ public class RoleContainerResource extends RoleResource {
         auth.roles().requireManage(roleContainer);
 
         if (rep.getName() == null) {
-            throw new BadRequestException();
+            throw new BadRequestException("role has no name");
         }
 
         try {
@@ -178,7 +178,7 @@ public class RoleContainerResource extends RoleResource {
                         }
                         realmRoles.add(realmRole);
                     }
-                    RoleUtils.expandCompositeRoles(realmRoles).forEach(role::addCompositeRole);
+                    realmRoles.stream().peek(auth.roles()::requireMapComposite).forEach(role::addCompositeRole);
                 }
 
                 Map<String, List<String>> compositeClientRoles = composites.getClient();
@@ -199,14 +199,14 @@ public class RoleContainerResource extends RoleResource {
                             }
                             clientRoles.add(clientRole);
                         }
-                        RoleUtils.expandCompositeRoles(clientRoles).forEach(role::addCompositeRole);
+                        clientRoles.stream().peek(auth.roles()::requireMapComposite).forEach(role::addCompositeRole);
                     }
                 }
             }
 
             adminEvent.operation(OperationType.CREATE).resourcePath(uriInfo, role.getName()).representation(rep).success();
 
-            return Response.created(uriInfo.getAbsolutePathBuilder().path(role.getName()).build()).build();
+            return Response.created(uriInfo.getAbsolutePathBuilder().path(Encode.encodePathSegmentAsIs(role.getName())).build()).build();
         } catch (ModelDuplicateException e) {
             throw ErrorResponse.exists("Role with name " + rep.getName() + " already exists");
         }
@@ -312,6 +312,7 @@ public class RoleContainerResource extends RoleResource {
     @Consumes(MediaType.APPLICATION_JSON)
     @Tag(name = KeycloakOpenAPI.Admin.Tags.ROLES)
     @Operation( summary = "Add a composite to the role")
+    @APIResponse(responseCode = "204", description = "No Content")
     public void addComposites(final @Parameter(description = "role's name (not id!)") @PathParam("role-name") String roleName, List<RoleRepresentation> roles) {
         auth.roles().requireManage(roleContainer);
         RoleModel role = roleContainer.getRole(roleName);
@@ -370,14 +371,14 @@ public class RoleContainerResource extends RoleResource {
      * @param clientUuid
      * @return
      */
-    @Path("{role-name}/composites/clients/{clientUuid}")
+    @Path("{role-name}/composites/clients/{client-uuid}")
     @GET
     @NoCache
     @Produces(MediaType.APPLICATION_JSON)
     @Tag(name = KeycloakOpenAPI.Admin.Tags.ROLES)
     @Operation( summary = "Get client-level roles for the client that are in the role's composite")
     public Stream<RoleRepresentation> getClientRoleComposites(final @Parameter(description = "role's name (not id!)") @PathParam("role-name") String roleName,
-                                                                final @PathParam("clientUuid") String clientUuid) {
+                                                                final @PathParam("client-uuid") String clientUuid) {
         auth.roles().requireView(roleContainer);
         RoleModel role = roleContainer.getRole(roleName);
         if (role == null) {
@@ -429,6 +430,7 @@ public class RoleContainerResource extends RoleResource {
     @Tag(name = KeycloakOpenAPI.Admin.Tags.ROLES)
     @Operation( summary = "Return object stating whether role Authorization permissions have been initialized or not and a reference")
     public ManagementPermissionReference getManagementPermissions(final @PathParam("role-name") String roleName) {
+        ProfileHelper.requireFeature(Profile.Feature.ADMIN_FINE_GRAINED_AUTHZ);
         auth.roles().requireView(roleContainer);
         RoleModel role = roleContainer.getRole(roleName);
         if (role == null) {
@@ -457,6 +459,7 @@ public class RoleContainerResource extends RoleResource {
     @Tag(name = KeycloakOpenAPI.Admin.Tags.ROLES)
     @Operation( summary = "Return object stating whether role Authorization permissions have been initialized or not and a reference")
     public ManagementPermissionReference setManagementPermissionsEnabled(final @PathParam("role-name") String roleName, ManagementPermissionReference ref) {
+        ProfileHelper.requireFeature(Profile.Feature.ADMIN_FINE_GRAINED_AUTHZ);
         auth.roles().requireManage(roleContainer);
         RoleModel role = roleContainer.getRole(roleName);
         if (role == null) {
@@ -479,6 +482,7 @@ public class RoleContainerResource extends RoleResource {
      * @param roleName the role name.
      * @param firstResult first result to return. Ignored if negative or {@code null}.
      * @param maxResults maximum number of results to return. Ignored if negative or {@code null}.
+     * @param briefRepresentation Boolean which defines whether brief representations are returned (default: false)
      * @return a non-empty {@code Stream} of users.
      */
     @Path("{role-name}/users")
@@ -488,6 +492,7 @@ public class RoleContainerResource extends RoleResource {
     @Tag(name = KeycloakOpenAPI.Admin.Tags.ROLES)
     @Operation( summary = "Returns a stream of users that have the specified role name.")
     public Stream<UserRepresentation> getUsersInRole(final @Parameter(description = "the role name.") @PathParam("role-name") String roleName,
+                                                    @Parameter(description = "Boolean which defines whether brief representations are returned (default: false)") @QueryParam("briefRepresentation") Boolean briefRepresentation,
                                                     @Parameter(description = "first result to return. Ignored if negative or {@code null}.") @QueryParam("first") Integer firstResult,
                                                     @Parameter(description = "maximum number of results to return. Ignored if negative or {@code null}.") @QueryParam("max") Integer maxResults) {
         
@@ -500,8 +505,11 @@ public class RoleContainerResource extends RoleResource {
             throw new NotFoundException("Could not find role");
         }
 
+        final Function<UserModel, UserRepresentation> toRepresentation = briefRepresentation != null && briefRepresentation
+                ? ModelToRepresentation::toBriefRepresentation
+                : user -> ModelToRepresentation.toRepresentation(session, realm, user);
         return session.users().getRoleMembersStream(realm, role, firstResult, maxResults)
-                .map(user -> ModelToRepresentation.toRepresentation(session, realm, user));
+                .map(toRepresentation);
     }
     
     /**

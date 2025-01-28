@@ -14,7 +14,7 @@ export default class GroupModal {
   };
 
   textArea() {
-    return cy.get(".pf-c-code-editor__code textarea");
+    return cy.get(".w-tc-editor-text");
   }
 
   importButton() {

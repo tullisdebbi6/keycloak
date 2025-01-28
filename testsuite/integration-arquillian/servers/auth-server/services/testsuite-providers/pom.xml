@@ -31,8 +31,8 @@
     <name>Auth Server Services - Testsuite Providers</name>
 
     <properties>
-        <js-adapter.version>${project.version}</js-adapter.version>
-        <js-adapter.file.path>${project.basedir}/target/classes/javascript</js-adapter.file.path>
+        <js-adapter.dist.path>${project.basedir}/../../../../../../js/libs/keycloak-js/lib</js-adapter.dist.path>
+        <js-adapter.target.path>${project.basedir}/target/classes/javascript</js-adapter.target.path>
     </properties>
 
     <dependencies>
@@ -55,11 +55,16 @@
         </dependency>
         <dependency>
             <groupId>org.keycloak</groupId>
-            <artifactId>keycloak-model-legacy-services</artifactId>
+            <artifactId>keycloak-model-storage-services</artifactId>
         </dependency>
         <dependency>
             <groupId>org.wildfly.core</groupId>
             <artifactId>wildfly-controller</artifactId>
+        </dependency>
+        <!-- pick up the transitive dependencies for the quarkus logmanager -->
+        <dependency>
+            <groupId>org.jboss.logmanager</groupId>
+            <artifactId>jboss-logmanager</artifactId>
         </dependency>
         <dependency>
             <groupId>org.keycloak.testsuite</groupId>
@@ -77,32 +82,11 @@
         </dependency>
         <dependency>
             <groupId>org.infinispan</groupId>
-            <artifactId>infinispan-core-jakarta</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.infinispan</groupId>
-            <artifactId>infinispan-client-hotrod-jakarta</artifactId>
+            <artifactId>infinispan-core</artifactId>
         </dependency>
         <dependency>
             <groupId>org.infinispan</groupId>
             <artifactId>infinispan-tasks-api</artifactId>
-            <version>${infinispan.version}</version>
-            <exclusions>
-                <exclusion>
-                    <groupId>org.infinispan</groupId>
-                    <artifactId>infinispan-core</artifactId>
-                </exclusion>
-            </exclusions>
-        </dependency>
-        <dependency>
-            <groupId>org.keycloak</groupId>
-            <artifactId>keycloak-model-map</artifactId>
-            <version>${project.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>org.keycloak</groupId>
-            <artifactId>keycloak-model-map-hot-rod</artifactId>
-            <version>${project.version}</version>
         </dependency>
     </dependencies>
 
@@ -127,25 +111,24 @@
 
         <plugins>
             <plugin>
-                <artifactId>maven-dependency-plugin</artifactId>
+                <artifactId>maven-resources-plugin</artifactId>
                 <executions>
                     <execution>
-                        <id>unpack-javascript-adapter</id>
+                        <id>copy-keycloak-js</id>
                         <phase>generate-resources</phase>
                         <goals>
-                            <goal>unpack</goal>
+                            <goal>copy-resources</goal>
                         </goals>
                         <configuration>
-                            <artifactItems>
-                                <artifactItem>
-                                    <groupId>org.keycloak</groupId>
-                                    <artifactId>keycloak-js-adapter-jar</artifactId>
-                                    <version>${js-adapter.version}</version>
-                                    <type>jar</type>
-                                    <outputDirectory>${js-adapter.file.path}</outputDirectory>
-                                </artifactItem>
-                            </artifactItems>
-                            <includes>keycloak.js</includes>
+                            <outputDirectory>${js-adapter.target.path}</outputDirectory>
+                            <resources>
+                                <resource>
+                                    <directory>${js-adapter.dist.path}</directory>
+                                    <includes>
+                                        <include>keycloak.js</include>
+                                    </includes>
+                                </resource>
+                            </resources>
                         </configuration>
                     </execution>
                 </executions>

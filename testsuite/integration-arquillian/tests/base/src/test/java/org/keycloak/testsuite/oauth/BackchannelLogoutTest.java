@@ -54,8 +54,6 @@ import java.util.stream.Collectors;
 
 import jakarta.ws.rs.core.Response;
 
-// Remove @Ignore when closing Github issue 20643
-@Ignore
 public class BackchannelLogoutTest extends AbstractNestedBrokerTest {
 
     public static final String ACCOUNT_CLIENT_NAME = "account";
@@ -89,6 +87,8 @@ public class BackchannelLogoutTest extends AbstractNestedBrokerTest {
         final UserRepresentation userProviderRealm = new UserRepresentation();
         userProviderRealm.setUsername(nbc.getUserLogin());
         userProviderRealm.setEmail(nbc.getUserEmail());
+        userProviderRealm.setFirstName("f");
+        userProviderRealm.setLastName("l");
         userProviderRealm.setEmailVerified(true);
         userProviderRealm.setEnabled(true);
 
@@ -112,14 +112,14 @@ public class BackchannelLogoutTest extends AbstractNestedBrokerTest {
     @Before
     public void addClients() {
         addClientsToProviderAndConsumer();
+        fetchConsumerRealmDetails();
     }
 
-    @Before
-    public void fetchConsumerRealmDetails() {
+    private void fetchConsumerRealmDetails() {
         RealmResource realmResourceConsumerRealm = adminClient.realm(nbc.consumerRealmName());
         realmIdConsumerRealm = realmResourceConsumerRealm.toRepresentation().getId();
         accountClientIdConsumerRealm =
-                adminClient.realm(nbc.consumerRealmName()).clients().findByClientId(ACCOUNT_CLIENT_NAME).get(0).getId();
+                adminClient.realm(nbc.consumerRealmName()).clients().findByClientId(OidcBackchannelLogoutBrokerConfiguration.CONSUMER_CLIENT_ID).get(0).getId();
 
         RealmResource realmResourceSubConsumerRealm = adminClient.realm(nbc.subConsumerRealmName());
         accountClientIdSubConsumerRealm =
@@ -136,7 +136,7 @@ public class BackchannelLogoutTest extends AbstractNestedBrokerTest {
     @Test
     public void postBackchannelLogoutWithSessionId() throws Exception {
         String brokerClientIdProviderRealm = getClientId(nbc.providerRealmName(), BROKER_CLIENT_ID);
-        logInAsUserInIDPForFirstTime();
+        logInAsUserInIDP(OidcBackchannelLogoutBrokerConfiguration.CONSUMER_CLIENT_ID);
         String userIdConsumerRealm = getUserIdConsumerRealm();
 
         String sessionIdProviderRealm = assertProviderLoginEventIdpClient(userIdProviderRealm);
@@ -162,7 +162,7 @@ public class BackchannelLogoutTest extends AbstractNestedBrokerTest {
     public void postBackchannelLogoutWithoutSessionId() throws Exception {
         String brokerClientIdProviderRealm = getClientId(nbc.providerRealmName(), BROKER_CLIENT_ID);
 
-        logInAsUserInIDPForFirstTime();
+        logInAsUserInIDP(OidcBackchannelLogoutBrokerConfiguration.CONSUMER_CLIENT_ID);
         String userIdConsumerRealm = getUserIdConsumerRealm();
 
         String sessionIdProviderRealm = assertProviderLoginEventIdpClient(userIdProviderRealm);
@@ -244,7 +244,7 @@ public class BackchannelLogoutTest extends AbstractNestedBrokerTest {
 
     @Test
     public void postBackchannelLogoutWithSessionIdMultipleOpenSession() throws Exception {
-        logInAsUserInIDPForFirstTime();
+        logInAsUserInIDP(OidcBackchannelLogoutBrokerConfiguration.CONSUMER_CLIENT_ID);
         String userIdConsumerRealm = getUserIdConsumerRealm();
         String brokerClientIdProviderRealm = getClientId(nbc.providerRealmName(), BROKER_CLIENT_ID);
 
@@ -256,7 +256,7 @@ public class BackchannelLogoutTest extends AbstractNestedBrokerTest {
         OAuthClient oauth2 = new OAuthClient();
         oauth2.init(driver2);
         oauth2.realm(nbc.consumerRealmName())
-                .clientId(ACCOUNT_CLIENT_NAME)
+                .clientId(OidcBackchannelLogoutBrokerConfiguration.CONSUMER_CLIENT_ID)
                 .redirectUri(getAuthServerRoot() + "realms/" + nbc.consumerRealmName() + "/account")
                 .doLoginSocial(nbc.getIDPAlias(), nbc.getUserLogin(), nbc.getUserPassword());
 
@@ -285,7 +285,7 @@ public class BackchannelLogoutTest extends AbstractNestedBrokerTest {
 
     @Test
     public void postBackchannelLogoutWithoutSessionIdMultipleOpenSession() throws Exception {
-        logInAsUserInIDPForFirstTime();
+        logInAsUserInIDP(OidcBackchannelLogoutBrokerConfiguration.CONSUMER_CLIENT_ID);
         String userIdConsumerRealm = getUserIdConsumerRealm();
         String brokerClientIdProviderRealm = getClientId(nbc.providerRealmName(), BROKER_CLIENT_ID);
 
@@ -326,7 +326,7 @@ public class BackchannelLogoutTest extends AbstractNestedBrokerTest {
         IdentityProviderRepresentation identityProvider2 = addSecondIdentityProviderToConsumerRealm();
         String brokerClientIdProviderRealm = getClientId(nbc.providerRealmName(), BROKER_CLIENT_ID);
 
-        logInAsUserInIDPForFirstTime();
+        logInAsUserInIDP(OidcBackchannelLogoutBrokerConfiguration.CONSUMER_CLIENT_ID);
         String userIdConsumerRealm = getUserIdConsumerRealm();
         adminClient.realm(nbc.consumerRealmName()).users().get(userIdConsumerRealm)
                 .resetPassword(CredentialBuilder.create().password(USER_PASSWORD_CONSUMER_REALM).build());
@@ -367,7 +367,7 @@ public class BackchannelLogoutTest extends AbstractNestedBrokerTest {
         IdentityProviderRepresentation identityProvider2 = addSecondIdentityProviderToConsumerRealm();
         String brokerClientIdProviderRealm = getClientId(nbc.providerRealmName(), BROKER_CLIENT_ID);
 
-        logInAsUserInIDPForFirstTime();
+        logInAsUserInIDP(OidcBackchannelLogoutBrokerConfiguration.CONSUMER_CLIENT_ID);
         String userIdConsumerRealm = getUserIdConsumerRealm();
         adminClient.realm(nbc.consumerRealmName()).users().get(userIdConsumerRealm)
                 .resetPassword(CredentialBuilder.create().password(USER_PASSWORD_CONSUMER_REALM).build());
@@ -406,7 +406,7 @@ public class BackchannelLogoutTest extends AbstractNestedBrokerTest {
 
     @Test
     public void postBackchannelLogoutOnDisabledClientReturnsNotImplemented() throws Exception {
-        logInAsUserInIDPForFirstTime();
+        logInAsUserInIDP(OidcBackchannelLogoutBrokerConfiguration.CONSUMER_CLIENT_ID);
         String userIdConsumerRealm = getUserIdConsumerRealm();
 
         String sessionIdProviderRealm = assertProviderLoginEventIdpClient(userIdProviderRealm);
@@ -421,7 +421,6 @@ public class BackchannelLogoutTest extends AbstractNestedBrokerTest {
         oauth.realm(nbc.consumerRealmName());
         try (CloseableHttpResponse response = oauth.doBackchannelLogout(logoutTokenEncoded)) {
             assertThat(response, Matchers.statusCodeIsHC(Response.Status.NOT_IMPLEMENTED));
-            assertThat(response, Matchers.bodyHC(containsString("There was an error in the local logout")));
         }
 
         assertLogoutErrorEvent(nbc.consumerRealmName());
@@ -511,8 +510,9 @@ public class BackchannelLogoutTest extends AbstractNestedBrokerTest {
         String sessionIdProviderRealm = assertProviderLoginEventIdpClient(userIdProviderRealm);
 
         String sessionIdConsumerRealm = assertConsumerLoginEvent(userIdConsumerRealm, OidcBackchannelLogoutBrokerConfiguration.CONSUMER_CLIENT_ID);
-        assertActiveSessionInClient(nbc.consumerRealmName(), consumerClientId, userIdConsumerRealm,
+        assertNoSessionsInClient(nbc.consumerRealmName(), consumerClientId, userIdConsumerRealm,
                 sessionIdConsumerRealm);
+        assertActiveOfflineSessionInClient(nbc.consumerRealmName(), consumerClientId, userIdConsumerRealm);
 
         String sessionIdSubConsumerRealm =
                 assertLoginEvent(userIdSubConsumerRealm, ACCOUNT_CLIENT_NAME, nbc.subConsumerRealmName());
@@ -526,13 +526,11 @@ public class BackchannelLogoutTest extends AbstractNestedBrokerTest {
             assertThat(response, Matchers.statusCodeIsHC(Response.Status.OK));
         }
 
-        assertConsumerLogoutEvent(sessionIdConsumerRealm, userIdConsumerRealm);
-        assertLogoutEvent(sessionIdSubConsumerRealm, userIdSubConsumerRealm, nbc.subConsumerRealmName());
-
+        // no logout event as there is no online session now
         assertNoSessionsInClient(nbc.consumerRealmName(), consumerClientId, userIdConsumerRealm,
                 sessionIdConsumerRealm);
         assertNoOfflineSessionsInClient(nbc.consumerRealmName(), consumerClientId, userIdConsumerRealm);
-        assertNoSessionsInClient(nbc.subConsumerRealmName(), accountClientIdSubConsumerRealm, userIdSubConsumerRealm,
+        assertActiveSessionInClient(nbc.subConsumerRealmName(), accountClientIdSubConsumerRealm, userIdSubConsumerRealm,
                 sessionIdSubConsumerRealm);
         assertActiveSessionInClient(nbc.providerRealmName(), brokerClientIdProviderRealm, userIdProviderRealm,
                 sessionIdProviderRealm);
@@ -551,8 +549,9 @@ public class BackchannelLogoutTest extends AbstractNestedBrokerTest {
         String sessionIdProviderRealm = assertProviderLoginEventIdpClient(userIdProviderRealm);
 
         String sessionIdConsumerRealm = assertConsumerLoginEvent(userIdConsumerRealm, OidcBackchannelLogoutBrokerConfiguration.CONSUMER_CLIENT_ID);
-        assertActiveSessionInClient(nbc.consumerRealmName(), consumerClientId, userIdConsumerRealm,
+        assertNoSessionsInClient(nbc.consumerRealmName(), consumerClientId, userIdConsumerRealm,
                 sessionIdConsumerRealm);
+        assertActiveOfflineSessionInClient(nbc.consumerRealmName(), consumerClientId, userIdConsumerRealm);
 
         String sessionIdSubConsumerRealm =
                 assertLoginEvent(userIdSubConsumerRealm, ACCOUNT_CLIENT_NAME, nbc.subConsumerRealmName());
@@ -566,13 +565,11 @@ public class BackchannelLogoutTest extends AbstractNestedBrokerTest {
             assertThat(response, Matchers.statusCodeIsHC(Response.Status.OK));
         }
 
-        assertConsumerLogoutEvent(sessionIdConsumerRealm, userIdConsumerRealm);
-        assertLogoutEvent(sessionIdSubConsumerRealm, userIdSubConsumerRealm, nbc.subConsumerRealmName());
-
+        // no logout event as there is no online session now
         assertNoSessionsInClient(nbc.consumerRealmName(), consumerClientId, userIdConsumerRealm,
                 sessionIdConsumerRealm);
         assertActiveOfflineSessionInClient(nbc.consumerRealmName(), consumerClientId, userIdConsumerRealm);
-        assertNoSessionsInClient(nbc.subConsumerRealmName(), accountClientIdSubConsumerRealm, userIdSubConsumerRealm,
+        assertActiveSessionInClient(nbc.subConsumerRealmName(), accountClientIdSubConsumerRealm, userIdSubConsumerRealm,
                 sessionIdSubConsumerRealm);
         assertActiveSessionInClient(nbc.providerRealmName(), brokerClientIdProviderRealm, userIdProviderRealm,
                 sessionIdProviderRealm);
@@ -590,21 +587,23 @@ public class BackchannelLogoutTest extends AbstractNestedBrokerTest {
 
         String sessionIdConsumerRealm = assertConsumerLoginEvent(userIdConsumerRealm,
                 OidcBackchannelLogoutBrokerConfiguration.CONSUMER_CLIENT_ID);
-        assertActiveSessionInClient(nbc.consumerRealmName(), consumerClientId, userIdConsumerRealm,
+        assertNoSessionsInClient(nbc.consumerRealmName(), consumerClientId, userIdConsumerRealm,
                 sessionIdConsumerRealm);
+        assertActiveOfflineSessionInClient(nbc.consumerRealmName(), consumerClientId, userIdConsumerRealm);
 
-        logoutFromRealm(getConsumerRoot(), nbc.consumerRealmName());
+        executeLogoutFromRealm(getConsumerRoot(), nbc.consumerRealmName(), null, null, OidcBackchannelLogoutBrokerConfiguration.CONSUMER_CLIENT_ID, null);
+        confirmLogout();
         assertNoSessionsInClient(nbc.consumerRealmName(), consumerClientId, userIdConsumerRealm,
                 sessionIdConsumerRealm);
         assertActiveOfflineSessionInClient(nbc.consumerRealmName(), consumerClientId, userIdConsumerRealm);
 
         String logoutTokenEncoded = getLogoutTokenEncodedAndSigned(userIdProviderRealm, sessionIdProviderRealm, true);
-        
+
         oauth.realm(nbc.consumerRealmName());
         try (CloseableHttpResponse response = oauth.doBackchannelLogout(logoutTokenEncoded)) {
             assertThat(response, Matchers.statusCodeIsHC(Response.Status.OK));
         }
-        
+
         assertNoOfflineSessionsInClient(nbc.consumerRealmName(), consumerClientId, userIdConsumerRealm);
     }
 
@@ -645,7 +644,7 @@ public class BackchannelLogoutTest extends AbstractNestedBrokerTest {
     }
 
     private String assertConsumerLoginEventAccountManagement(String userIdConsumerRealm) {
-        return assertConsumerLoginEvent(userIdConsumerRealm, ACCOUNT_CLIENT_NAME);
+        return assertConsumerLoginEvent(userIdConsumerRealm, OidcBackchannelLogoutBrokerConfiguration.CONSUMER_CLIENT_ID);
     }
 
     private String assertConsumerLoginEvent(String userIdConsumerRealm, String clientId) {
@@ -704,6 +703,7 @@ public class BackchannelLogoutTest extends AbstractNestedBrokerTest {
             this.events.expectLogout(sessionId)
                     .realm(realmId)
                     .user(userId)
+                    .client((String) null)
                     .removeDetail(Details.REDIRECT_URI)
                     .assertEvent(logoutEvent);
         } else {
@@ -745,6 +745,7 @@ public class BackchannelLogoutTest extends AbstractNestedBrokerTest {
                 this.events.expectLogout(sessionId)
                         .realm(realmIdConsumerRealm)
                         .user(userIdConsumerRealm)
+                        .client((String) null)
                         .removeDetail(Details.REDIRECT_URI)
                         .assertEvent(logoutEvent);
             } else {
@@ -849,14 +850,13 @@ public class BackchannelLogoutTest extends AbstractNestedBrokerTest {
         OAuthClient oauth2 = new OAuthClient();
         oauth2.init(driver2);
         oauth2.realm(nbc.consumerRealmName())
-                .clientId(ACCOUNT_CLIENT_NAME)
+                .clientId(OidcBackchannelLogoutBrokerConfiguration.CONSUMER_CLIENT_ID)
                 .redirectUri(getAuthServerRoot() + "realms/" + nbc.consumerRealmName() + "/account")
                 .doLoginSocial(identityProviderDisplayName, nbc.getUserLogin(), nbc.getUserPassword());
         return oauth2;
     }
 
     private void linkUsers(OAuthClient oauth) {
-        oauth.updateAccountInformation(nbc.getUserLogin(), nbc.getUserEmail());
         oauth.linkUsers(nbc.getUserLogin(), USER_PASSWORD_CONSUMER_REALM);
     }
 

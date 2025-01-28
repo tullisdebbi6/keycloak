@@ -1,19 +1,20 @@
 export default class PageObject {
-  #selectItemSelectedIcon = ".pf-c-select__menu-item-icon";
-  #drpDwnMenuList = ".pf-c-dropdown__menu";
-  #drpDwnMenuItem = ".pf-c-dropdown__menu-item";
-  #drpDwnMenuToggleBtn = ".pf-c-dropdown__toggle";
-  #selectMenuList = ".pf-c-select__menu";
-  #selectMenuItem = ".pf-c-select__menu-item";
-  #selectMenuToggleBtn = ".pf-c-select__toggle";
-  #switchInput = ".pf-c-switch__input";
-  #formLabel = ".pf-c-form__label";
-  #chipGroup = ".pf-c-chip-group";
-  #chipGroupCloseBtn = ".pf-c-chip-group__close";
-  #chipItem = ".pf-c-chip-group__list-item";
-  #emptyStateDiv = ".pf-c-empty-state:visible";
-  #toolbarActionsButton = ".pf-c-toolbar button[aria-label='Actions']";
-  #breadcrumbItem = ".pf-c-breadcrumb .pf-c-breadcrumb__item";
+  #selectItemSelectedIcon = ".pf-v5-c-menu-toggle__toggle-icon";
+  #drpDwnMenuList = ".pf-v5-c-menu__list";
+  #drpDwnMenuItem = ".pf-v5-c-menu__item";
+  #drpDwnMenuToggleBtn = ".pf-v5-c-menu-toggle";
+  #selectMenuList = ".pf-v5-c-menu__list";
+  #selectMenuItem = ".pf-v5-c-menu__list-item";
+  #selectMenuToggleBtn = ".pf-v5-c-menu-toggle";
+  #switchInput = ".pf-v5-c-switch__input";
+  #formLabel = ".pf-v5-c-form__label";
+  #chipGroupCloseBtn = ".pf-v5-c-chip-group__close";
+  #chipItem = ".pf-v5-c-chip-group__list-item";
+  #emptyStateDiv = ".pf-v5-c-empty-state:visible";
+  #toolbarActionsButton = ".pf-v5-c-toolbar button[aria-label='Actions']";
+  #breadcrumbItem = ".pf-v5-c-breadcrumb .pf-v5-c-breadcrumb__item";
+
+  genericChipGroupSelector = ".pf-v5-c-chip-group";
 
   protected assertExist(element: Cypress.Chainable<JQuery>, exist: boolean) {
     element.should((!exist ? "not." : "") + "exist");
@@ -103,7 +104,12 @@ export default class PageObject {
   ) {
     element =
       element ??
-      cy.get(this.#drpDwnMenuToggleBtn).contains(itemName).parent().parent();
+      cy
+        .get(this.#drpDwnMenuToggleBtn)
+        .parent()
+        .contains(itemName)
+        .parent()
+        .parent();
     element.click();
     return this;
   }
@@ -114,7 +120,12 @@ export default class PageObject {
   ) {
     element =
       element ??
-      cy.get(this.#drpDwnMenuToggleBtn).contains(itemName).parent().parent();
+      cy
+        .get(this.#drpDwnMenuToggleBtn)
+        .parent()
+        .contains(itemName)
+        .parent()
+        .parent();
     this.clickDropdownMenuToggleButton(itemName, element);
     this.assertDropdownMenuIsOpen(true);
     return this;
@@ -126,7 +137,12 @@ export default class PageObject {
   ) {
     element =
       element ??
-      cy.get(this.#drpDwnMenuToggleBtn).contains(itemName).parent().parent();
+      cy
+        .get(this.#drpDwnMenuToggleBtn)
+        .parent()
+        .contains(itemName)
+        .parent()
+        .parent();
     this.clickDropdownMenuToggleButton(itemName, element);
     this.assertDropdownMenuIsOpen(false);
     return this;
@@ -266,41 +282,55 @@ export default class PageObject {
     return this;
   }
 
-  #getChipGroup(groupName: string) {
-    return cy.get(this.#chipGroup).contains(groupName).parent().parent();
+  #getChipGroup(groupSelector: string, groupName: string) {
+    return cy.get(groupSelector).contains(groupName).parent().parent();
   }
 
-  #getChipItem(itemName: string) {
-    return cy.get(this.#chipItem).contains(itemName).parent();
+  #getChipGroupWithLabel(groupSelector: string, label: string) {
+    cy.get(groupSelector)
+      .parent()
+      .find(".pf-v5-c-chip-group__label")
+      .contains(label);
+
+    return cy.get(groupSelector);
   }
 
-  #getChipGroupItem(groupName: string, itemName: string) {
-    return this.#getChipGroup(groupName)
+  #getChipGroupItem(
+    groupSelector: string,
+    groupName: string,
+    itemName: string,
+  ) {
+    return this.#getChipGroup(groupSelector, groupName)
       .find(this.#chipItem)
       .contains(itemName)
       .parent();
   }
 
-  protected removeChipGroup(groupName: string) {
-    this.#getChipGroup(groupName)
+  protected removeChipGroup(groupSelector: string, groupName: string) {
+    this.#getChipGroup(groupSelector, groupName)
       .find(this.#chipGroupCloseBtn)
       .find("button")
       .click();
     return this;
   }
 
-  protected removeChipItem(itemName: string) {
-    this.#getChipItem(itemName).find("button").click();
+  protected removeChipGroupItem(
+    groupSelector: string,
+    groupName: string,
+    itemName: string,
+  ) {
+    this.#getChipGroupItem(groupSelector, groupName, itemName)
+      .find("button")
+      .click();
     return this;
   }
 
-  protected removeChipGroupItem(groupName: string, itemName: string) {
-    this.#getChipGroupItem(groupName, itemName).find("button").click();
-    return this;
-  }
-
-  protected assertChipGroupExist(groupName: string, exist: boolean) {
-    this.assertExist(cy.contains(this.#chipGroup, groupName), exist);
+  protected assertChipGroupExist(
+    groupSelector: string,
+    groupName: string,
+    exist: boolean,
+  ) {
+    this.assertExist(cy.contains(groupSelector, groupName), exist);
     return this;
   }
 
@@ -310,20 +340,33 @@ export default class PageObject {
     return this;
   }
 
-  protected assertChipItemExist(itemName: string, exist: boolean) {
-    cy.get(this.#chipItem).within(() => {
-      cy.contains(itemName).should((exist ? "" : "not.") + "exist");
-    });
-    return this;
-  }
-
   protected assertChipGroupItemExist(
+    groupSelector: string,
     groupName: string,
     itemName: string,
     exist: boolean,
   ) {
     this.assertExist(
-      this.#getChipGroup(groupName).contains(this.#chipItem, itemName),
+      this.#getChipGroup(groupSelector, groupName).contains(
+        this.#chipItem,
+        itemName,
+      ),
+      exist,
+    );
+    return this;
+  }
+
+  protected assertLabeledChipGroupItemExist(
+    groupSelector: string,
+    labelName: string,
+    itemName: string,
+    exist: boolean,
+  ) {
+    this.assertExist(
+      this.#getChipGroupWithLabel(groupSelector, labelName).contains(
+        this.#chipItem,
+        itemName,
+      ),
       exist,
     );
     return this;

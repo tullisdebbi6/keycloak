@@ -19,9 +19,21 @@ package org.keycloak.quarkus.runtime.configuration;
 import io.smallrye.config.ConfigSourceInterceptor;
 import io.smallrye.config.ConfigSourceInterceptorContext;
 import io.smallrye.config.ConfigValue;
-import org.keycloak.common.util.StringPropertyReplacer;
+
+import io.smallrye.config.Priorities;
+import jakarta.annotation.Priority;
+import org.apache.commons.collections4.IteratorUtils;
+import org.apache.commons.collections4.iterators.FilterIterator;
+import org.keycloak.quarkus.runtime.Environment;
 import org.keycloak.quarkus.runtime.configuration.mappers.PropertyMapper;
 import org.keycloak.quarkus.runtime.configuration.mappers.PropertyMappers;
+import org.keycloak.quarkus.runtime.configuration.mappers.WildcardPropertyMapper;
+
+import java.util.Iterator;
+import java.util.List;
+import java.util.Set;
+
+import static org.keycloak.quarkus.runtime.Environment.isRebuild;
 
 /**
  * <p>This interceptor is responsible for mapping Keycloak properties to their corresponding properties in Quarkus.
@@ -34,35 +46,65 @@ import org.keycloak.quarkus.runtime.configuration.mappers.PropertyMappers;
  * from Keycloak (e.g.: database) is mapped to multiple properties in Quarkus.
  *
  * <p>This interceptor must execute after the {@link io.smallrye.config.ExpressionConfigSourceInterceptor} so that expressions
- * are properly resolved before executing this interceptor. Hence, leaving the default priority.
+ * are properly resolved before executing this interceptor.
+ * <p>
+ * The reason for the used priority is to always execute the interceptor before default Application Config Source interceptors
  */
+@Priority(Priorities.APPLICATION - 10)
 public class PropertyMappingInterceptor implements ConfigSourceInterceptor {
+
+    private static final ThreadLocal<Boolean> disable = new ThreadLocal<>();
+    private static final ThreadLocal<Boolean> disableAdditionalNames = new ThreadLocal<>();
+
+    public static void disable() {
+        disable.set(true);
+    }
+
+    public static void enable() {
+        disable.remove();
+    }
+
+    static Iterator<String> filterRuntime(Iterator<String> iter) {
+        if (!isRebuild() && !Environment.isRebuildCheck()) {
+            return iter;
+        }
+        return new FilterIterator<>(iter, item -> !isRuntime(item));
+    }
+
+    static boolean isRuntime(String name) {
+        PropertyMapper<?> mapper = PropertyMappers.getMapper(name);
+        return mapper != null && mapper.isRunTime();
+    }
+
+    @Override
+    public Iterator<String> iterateNames(ConfigSourceInterceptorContext context) {
+        // We need to iterate through names to get wildcard option names.
+        // Additionally, wildcardValuesTransformer might also trigger iterateNames.
+        // Hence we need to disable this to prevent infinite recursion.
+        // But we don't want to disable the whole interceptor, as wildcardValuesTransformer
+        // might still need mappers to work.
+        List<String> mappedWildcardNames = List.of();
+        if (!Boolean.TRUE.equals(disableAdditionalNames.get())) {
+            disableAdditionalNames.set(true);
+            try {
+                mappedWildcardNames = PropertyMappers.getWildcardMappers().stream()
+                        .map(WildcardPropertyMapper::getToWithWildcards)
+                        .flatMap(Set::stream)
+                        .toList();
+            } finally {
+                disableAdditionalNames.remove();
+            }
+        }
+
+        // this could be optimized by filtering the wildcard names in the stream above
+        return filterRuntime(IteratorUtils.chainedIterator(mappedWildcardNames.iterator(), context.iterateNames()));
+    }
 
     @Override
     public ConfigValue getValue(ConfigSourceInterceptorContext context, String name) {
-        ConfigValue value = PropertyMappers.getValue(context, name);
-
-        if (value == null || value.getValue() == null) {
-            return null;
+        if (Boolean.TRUE.equals(disable.get())) {
+            return context.proceed(name);
         }
-
-        if (!value.getValue().contains("${")) {
-            return value;
-        }
-
-        // Our mappers might have returned a value containing an expression ${...}.
-        // However, ExpressionConfigSourceInterceptor was already executed before (to expand e.g. env vars in config file).
-        // Hence, we need to manually resolve these expressions here. Not ideal, but there's no other way (at least I haven't found one).
-        return value.withValue(
-                StringPropertyReplacer.replaceProperties(value.getValue(),
-                        property -> {
-                            ConfigValue prop = context.proceed(property);
-
-                            if (prop == null) {
-                                return null;
-                            }
-
-                            return prop.getValue();
-                        }));
+        return PropertyMappers.getValue(context, name);
     }
 }

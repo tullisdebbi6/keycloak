@@ -18,47 +18,91 @@
 package org.keycloak.it.cli.dist;
 
 import io.quarkus.test.junit.main.Launch;
-import io.quarkus.test.junit.main.LaunchResult;
 import org.junit.jupiter.api.MethodOrderer;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestMethodOrder;
+import org.junit.jupiter.api.condition.DisabledOnOs;
+import org.junit.jupiter.api.condition.OS;
 import org.keycloak.it.junit5.extension.CLIResult;
 import org.keycloak.it.junit5.extension.DistributionTest;
+import org.keycloak.it.junit5.extension.DryRun;
 import org.keycloak.it.junit5.extension.RawDistOnly;
+import org.keycloak.it.utils.KeycloakDistribution;
+import org.keycloak.it.utils.RawKeycloakDistribution;
+
+import java.io.File;
+import java.nio.file.Paths;
+
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @DistributionTest
 @RawDistOnly(reason = "Containers are immutable")
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
+@Tag(DistributionTest.WIN)
 public class StartDevCommandDistTest {
 
+    @DryRun
     @Test
     @Launch({ "start-dev" })
-    void testDevModeWarning(LaunchResult result) {
-        CLIResult cliResult = (CLIResult) result;
+    void testDevModeWarning(CLIResult cliResult) {
         cliResult.assertStartedDevMode();
     }
 
+    @DryRun
     @Test
     @Launch({ "start-dev", "--db=dev-mem" })
-    void testBuildPropertyAvailable(LaunchResult result) {
-        CLIResult cliResult = (CLIResult) result;
+    void testBuildPropertyAvailable(CLIResult cliResult) {
         cliResult.assertStartedDevMode();
     }
 
     @Test
-    @Launch({ "start-dev", "--debug" })
-    void testStartDevShouldStartTwoJVMs(LaunchResult result) {
-        CLIResult cliResult = (CLIResult) result;
+    @Launch({ "start-dev", "--debug", "--features=passkeys:v1" })
+    void testStartDevShouldStartTwoJVMs(CLIResult cliResult) {
         cliResult.assertMessageWasShownExactlyNumberOfTimes("Listening for transport dt_socket at address:", 2);
         cliResult.assertStartedDevMode();
+        cliResult.assertMessage("passkeys");
+    }
+
+    @DryRun
+    @Test
+    @Launch({ "build", "--debug", "--db=dev-file" })
+    void testBuildMustNotRunTwoJVMs(CLIResult cliResult) {
+        cliResult.assertMessageWasShownExactlyNumberOfTimes("Listening for transport dt_socket at address:", 1);
+        cliResult.assertBuild();
+    }
+
+    @DryRun
+    @Test
+    @Launch({ "start-dev", "--verbose" })
+    void testVerboseAfterCommand(CLIResult cliResult) {
+        cliResult.assertStartedDevMode();
     }
 
     @Test
-    @Launch({ "build", "--debug" })
-    void testBuildMustNotRunTwoJVMs(LaunchResult result) {
-        CLIResult cliResult = (CLIResult) result;
-        cliResult.assertMessageWasShownExactlyNumberOfTimes("Listening for transport dt_socket at address:", 1);
-        cliResult.assertBuild();
+    @DisabledOnOs(value = { OS.LINUX, OS.MAC }, disabledReason = "A drive letter in URI can cause a problem.")
+    void testConfigKeystoreAbsolutePath(KeycloakDistribution dist) {
+        CLIResult cliResult = dist.run("start-dev", "--config-keystore=" + Paths.get("src/test/resources/keystore").toAbsolutePath().normalize(),
+                "--config-keystore-password=secret");
+
+        cliResult.assertMessage("DEBUG [org.hibernate");
+        cliResult.assertMessage("DEBUG [org.keycloak");
+        cliResult.assertMessage("Listening on:");
+        cliResult.assertStartedDevMode();
+    }
+
+    @DryRun
+    @Test
+    void testStartDevThenImportRebuild(KeycloakDistribution dist) throws Exception {
+        RawKeycloakDistribution rawDist = dist.unwrap(RawKeycloakDistribution.class);
+        CLIResult result = rawDist.run("start-dev");
+        assertTrue(result.getErrorOutput().isEmpty(), result.getErrorOutput());
+
+        File target = new File("./target");
+
+        // feature change should trigger a build
+        result = rawDist.run("--profile=dev", "export", "--features=docker", "--dir=" + target.getAbsolutePath());
+        result.assertMessage("Updating the configuration and installing your custom providers, if any. Please wait.");
     }
 
 }

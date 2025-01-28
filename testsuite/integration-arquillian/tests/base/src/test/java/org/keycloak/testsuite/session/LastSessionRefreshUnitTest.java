@@ -20,7 +20,6 @@ package org.keycloak.testsuite.session;
 import org.infinispan.Cache;
 import org.junit.After;
 import org.junit.Assert;
-import org.junit.BeforeClass;
 import org.junit.Test;
 import org.keycloak.common.Profile;
 import org.keycloak.common.util.Retry;
@@ -52,11 +51,6 @@ public class LastSessionRefreshUnitTest extends AbstractKeycloakTest {
 
     }
 
-    @BeforeClass
-    public static void checkNotMapStorage() {
-        ProfileAssume.assumeFeatureDisabled(Profile.Feature.MAP_STORAGE);
-    }
-
     @After
     public void cleanupPeriodicTask() {
         // Cleanup unneeded periodic task, which was added during this test
@@ -71,6 +65,9 @@ public class LastSessionRefreshUnitTest extends AbstractKeycloakTest {
 
     @Test
     public void testLastSessionRefreshCounters() {
+        ProfileAssume.assumeFeatureDisabled(Profile.Feature.CLUSTERLESS);
+        ProfileAssume.assumeFeatureDisabled(Profile.Feature.MULTI_SITE);
+
         testingClient.server().run(new  LastSessionRefreshServerCounterTest());
     }
 
@@ -115,6 +112,9 @@ public class LastSessionRefreshUnitTest extends AbstractKeycloakTest {
 
     @Test
     public void testLastSessionRefreshIntervals() {
+        ProfileAssume.assumeFeatureDisabled(Profile.Feature.CLUSTERLESS);
+        ProfileAssume.assumeFeatureDisabled(Profile.Feature.MULTI_SITE);
+
         testingClient.server().run(new  LastSessionRefreshServerIntervalsTest());
     }
 

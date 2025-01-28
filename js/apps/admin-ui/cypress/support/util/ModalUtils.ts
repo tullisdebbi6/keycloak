@@ -2,17 +2,18 @@ import PageObject from "../pages/admin-ui/components/PageObject";
 import TablePage from "../pages/admin-ui/components/TablePage";
 
 export default class ModalUtils extends PageObject {
-  #modalDiv = ".pf-c-modal-box";
-  #modalTitle = ".pf-c-modal-box .pf-c-modal-box__title-text";
-  #modalMessage = ".pf-c-modal-box .pf-c-modal-box__body";
+  #modalDiv = ".pf-v5-c-modal-box";
+  #modalTitle = ".pf-v5-c-modal-box .pf-v5-c-modal-box__title-text";
+  #modalMessage = ".pf-v5-c-modal-box .pf-v5-c-modal-box__body";
   #confirmModalBtn = "confirm";
   #cancelModalBtn = "cancel";
-  #closeModalBtn = ".pf-c-modal-box .pf-m-plain";
+  #closeModalBtn = ".pf-v5-c-modal-box .pf-m-plain";
   #copyToClipboardBtn = '[id*="copy-button"]';
-  #addModalDropdownBtn = "#add-dropdown > button";
-  #addModalDropdownItem = "#add-dropdown [role='menuitem']";
+  #addModalDropdownBtn = "#add-dropdown";
+  #addModalDropdownItem = ".pf-v5-c-modal-box__footer .pf-v5-c-menu__content";
   #addBtn = "add";
   #tablePage = new TablePage(TablePage.tableSelector);
+  #confirmDuplicateModalBtn = "duplicateGroup";
 
   table() {
     return this.#tablePage;
@@ -25,6 +26,12 @@ export default class ModalUtils extends PageObject {
 
   confirmModal() {
     cy.findByTestId(this.#confirmModalBtn).click({ force: true });
+
+    return this;
+  }
+
+  confirmDuplicateModal() {
+    cy.findByTestId(this.#confirmDuplicateModalBtn).click();
 
     return this;
   }

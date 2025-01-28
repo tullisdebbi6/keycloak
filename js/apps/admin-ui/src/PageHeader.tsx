@@ -1,30 +1,37 @@
+import { useEnvironment, useHelp } from "@keycloak/keycloak-ui-shared";
 import {
   Avatar,
-  Brand,
+  Divider,
   Dropdown,
   DropdownItem,
-  DropdownSeparator,
-  DropdownToggle,
-  KebabToggle,
-  PageHeader,
-  PageHeaderTools,
-  PageHeaderToolsGroup,
-  PageHeaderToolsItem,
+  DropdownList,
+  Masthead,
+  MastheadBrand,
+  MastheadContent,
+  MastheadToggle,
+  MenuToggle,
+  PageToggleButton,
+  Toolbar,
+  ToolbarContent,
+  ToolbarItem,
 } from "@patternfly/react-core";
-import { HelpIcon } from "@patternfly/react-icons";
-import { ReactNode, useState } from "react";
+import { BarsIcon, EllipsisVIcon, HelpIcon } from "@patternfly/react-icons";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Link } from "react-router-dom";
-import { useHelp } from "ui-shared";
-
+import { Link, useHref } from "react-router-dom";
+import { PageHeaderClearCachesModal } from "./PageHeaderClearCachesModal";
 import { HelpHeader } from "./components/help-enabler/HelpHeader";
+import { useAccess } from "./context/access/Access";
 import { useRealm } from "./context/realm-context/RealmContext";
 import { useWhoAmI } from "./context/whoami/WhoAmI";
 import { toDashboard } from "./dashboard/routes/Dashboard";
-import environment from "./environment";
-import { keycloak } from "./keycloak";
+import { usePreviewLogo } from "./realm-settings/themes/LogoContext";
+import { joinPath } from "./utils/joinPath";
+import useToggle from "./utils/useToggle";
 
 const ManageAccountDropdownItem = () => {
+  const { keycloak } = useEnvironment();
+
   const { t } = useTranslation();
   return (
     <DropdownItem
@@ -38,6 +45,7 @@ const ManageAccountDropdownItem = () => {
 };
 
 const SignOutDropdownItem = () => {
+  const { keycloak } = useEnvironment();
   const { t } = useTranslation();
   return (
     <DropdownItem
@@ -57,15 +65,24 @@ const ServerInfoDropdownItem = () => {
   return (
     <DropdownItem
       key="server info"
-      component={
-        // The type definition in PatternFly is incorrect, so we need to cast here.
-        ((props: any) => (
-          <Link {...props} to={toDashboard({ realm })} />
-        )) as unknown as ReactNode
-      }
+      component={(props) => <Link {...props} to={toDashboard({ realm })} />}
     >
       {t("realmInfo")}
     </DropdownItem>
+  );
+};
+
+const ClearCachesDropdownItem = () => {
+  const { t } = useTranslation();
+  const [open, toggleModal] = useToggle();
+
+  return (
+    <>
+      <DropdownItem key="clear caches" onClick={() => toggleModal()}>
+        {t("clearCachesTitle")}
+      </DropdownItem>
+      {open && <PageHeaderClearCachesModal onClose={() => toggleModal()} />}
+    </>
   );
 };
 
@@ -73,125 +90,172 @@ const HelpDropdownItem = () => {
   const { t } = useTranslation();
   const { enabled, toggleHelp } = useHelp();
   return (
-    <DropdownItem icon={<HelpIcon />} onClick={toggleHelp}>
+    <DropdownItem
+      data-testId="helpIcon"
+      icon={<HelpIcon />}
+      onClick={toggleHelp}
+    >
       {enabled ? t("helpEnabled") : t("helpDisabled")}
     </DropdownItem>
   );
 };
 
-const kebabDropdownItems = [
+const kebabDropdownItems = (isMasterRealm: boolean, isManager: boolean) => [
   <ManageAccountDropdownItem key="kebab Manage Account" />,
   <ServerInfoDropdownItem key="kebab Server Info" />,
+  ...(isMasterRealm && isManager
+    ? [<ClearCachesDropdownItem key="Clear Caches" />]
+    : []),
   <HelpDropdownItem key="kebab Help" />,
-  <DropdownSeparator key="kebab sign out separator" />,
+  <Divider component="li" key="kebab sign out separator" />,
   <SignOutDropdownItem key="kebab Sign out" />,
 ];
 
-const userDropdownItems = [
+const userDropdownItems = (isMasterRealm: boolean, isManager: boolean) => [
   <ManageAccountDropdownItem key="Manage Account" />,
   <ServerInfoDropdownItem key="Server info" />,
-  <DropdownSeparator key="sign out separator" />,
+  ...(isMasterRealm && isManager
+    ? [<ClearCachesDropdownItem key="Clear Caches" />]
+    : []),
+  <Divider component="li" key="sign out separator" />,
   <SignOutDropdownItem key="Sign out" />,
 ];
 
 const KebabDropdown = () => {
   const [isDropdownOpen, setDropdownOpen] = useState(false);
+  const { realm } = useRealm();
+  const { hasAccess } = useAccess();
+
+  const isMasterRealm = realm === "master";
+  const isManager = hasAccess("manage-realm");
 
   return (
     <Dropdown
-      id="user-dropdown-kebab"
       isPlain
-      position="right"
-      toggle={<KebabToggle onToggle={setDropdownOpen} />}
+      onOpenChange={(isOpen) => setDropdownOpen(isOpen)}
+      toggle={(ref) => (
+        <MenuToggle
+          id="user-dropdown-kebab"
+          ref={ref}
+          variant="plain"
+          onClick={() => setDropdownOpen(!isDropdownOpen)}
+          isExpanded={isDropdownOpen}
+        >
+          <EllipsisVIcon />
+        </MenuToggle>
+      )}
       isOpen={isDropdownOpen}
-      dropdownItems={kebabDropdownItems}
-    />
+    >
+      <DropdownList>
+        {kebabDropdownItems(isMasterRealm, isManager)}
+      </DropdownList>
+    </Dropdown>
   );
 };
 
 const UserDropdown = () => {
   const { whoAmI } = useWhoAmI();
   const [isDropdownOpen, setDropdownOpen] = useState(false);
+  const { realm } = useRealm();
+  const { hasAccess } = useAccess();
+
+  const isMasterRealm = realm === "master";
+  const isManager = hasAccess("manage-realm");
 
   return (
     <Dropdown
       isPlain
-      position="right"
-      id="user-dropdown"
       isOpen={isDropdownOpen}
-      toggle={
-        <DropdownToggle onToggle={setDropdownOpen}>
+      onOpenChange={(isOpen) => setDropdownOpen(isOpen)}
+      toggle={(ref) => (
+        <MenuToggle
+          id="user-dropdown"
+          ref={ref}
+          onClick={() => setDropdownOpen(!isDropdownOpen)}
+        >
           {whoAmI.getDisplayName()}
-        </DropdownToggle>
-      }
-      dropdownItems={userDropdownItems}
-    />
+        </MenuToggle>
+      )}
+    >
+      <DropdownList>{userDropdownItems(isMasterRealm, isManager)}</DropdownList>
+    </Dropdown>
   );
 };
 
 export const Header = () => {
+  const { environment, keycloak } = useEnvironment();
+  const { t } = useTranslation();
   const { realm } = useRealm();
+  const contextLogo = usePreviewLogo();
+  const customLogo = contextLogo?.logo;
 
-  const headerTools = () => {
-    const picture = keycloak.tokenParsed?.picture;
-    return (
-      <PageHeaderTools>
-        <PageHeaderToolsGroup
-          visibility={{
-            default: "hidden",
-            md: "visible",
-          }} /** the settings and help icon buttons are only visible on desktop sizes and replaced by a kebab dropdown for other sizes */
-        >
-          <PageHeaderToolsItem>
-            <HelpHeader />
-          </PageHeaderToolsItem>
-        </PageHeaderToolsGroup>
-
-        <PageHeaderToolsGroup>
-          <PageHeaderToolsItem
-            visibility={{
-              md: "hidden",
-            }} /** this kebab dropdown replaces the icon buttons and is hidden for desktop sizes */
-          >
-            <KebabDropdown />
-          </PageHeaderToolsItem>
-          <PageHeaderToolsItem
-            visibility={{
-              default: "hidden",
-              md: "visible",
-            }} /** this user dropdown is hidden on mobile sizes */
-          >
-            <UserDropdown />
-          </PageHeaderToolsItem>
-        </PageHeaderToolsGroup>
-        <Avatar
-          src={picture || environment.resourceUrl + "/img_avatar.svg"}
-          alt="Avatar image"
-        />
-      </PageHeaderTools>
-    );
-  };
-
-  const logo = environment.logo ? environment.logo : "/logo.svg";
-  const logoUrl = environment.logoUrl
-    ? environment.logoUrl
-    : toDashboard({ realm });
+  const picture = keycloak.tokenParsed?.picture;
+  const logo = customLogo || environment.logo || "/logo.svg";
+  const url = useHref(toDashboard({ realm }));
+  const logoUrl = environment.logoUrl ? environment.logoUrl : url;
 
   return (
-    <PageHeader
-      showNavToggle
-      logo={
-        <Link to={logoUrl}>
-          <Brand
-            src={environment.resourceUrl + logo}
-            id="masthead-logo"
-            alt="Logo"
-            className="keycloak__pageheader_brand"
-          />
-        </Link>
-      }
-      logoComponent="div"
-      headerTools={headerTools()}
-    />
+    <Masthead>
+      <MastheadToggle>
+        <PageToggleButton variant="plain" aria-label={t("navigation")}>
+          <BarsIcon />
+        </PageToggleButton>
+      </MastheadToggle>
+      <MastheadBrand href={logoUrl}>
+        <img
+          src={
+            logo.startsWith("/")
+              ? joinPath(environment.resourceUrl, logo)
+              : logo
+          }
+          id="masthead-logo"
+          alt={t("logo")}
+          aria-label={t("logo")}
+          className="keycloak__pageheader_brand"
+        />
+      </MastheadBrand>
+      <MastheadContent>
+        <Toolbar>
+          <ToolbarContent>
+            <ToolbarItem
+              align={{ default: "alignRight" }}
+              visibility={{
+                default: "hidden",
+                md: "visible",
+              }} /** the settings and help icon buttons are only visible on desktop sizes and replaced by a kebab dropdown for other sizes */
+            >
+              <HelpHeader />
+            </ToolbarItem>
+            <ToolbarItem
+              align={{ default: "alignLeft" }}
+              visibility={{
+                md: "hidden",
+              }} /** this kebab dropdown replaces the icon buttons and is hidden for desktop sizes */
+            >
+              <KebabDropdown />
+            </ToolbarItem>
+            <ToolbarItem
+              visibility={{
+                default: "hidden",
+                md: "visible",
+              }} /** this user dropdown is hidden on mobile sizes */
+            >
+              <UserDropdown />
+            </ToolbarItem>
+            <ToolbarItem
+              variant="overflow-menu"
+              align={{ default: "alignRight" }}
+              className="pf-v5-u-m-0-on-lg"
+            >
+              <Avatar
+                src={picture || environment.resourceUrl + "/img_avatar.svg"}
+                alt={t("avatarImage")}
+                aria-label={t("avatarImage")}
+              />
+            </ToolbarItem>
+          </ToolbarContent>
+        </Toolbar>
+      </MastheadContent>
+    </Masthead>
   );
 };

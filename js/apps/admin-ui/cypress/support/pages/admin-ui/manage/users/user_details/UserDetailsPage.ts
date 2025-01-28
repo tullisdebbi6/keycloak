@@ -1,4 +1,3 @@
-import { v4 as uuid } from "uuid";
 import { RequiredActionAlias } from "@keycloak/keycloak-admin-client/lib/defs/requiredActionProviderRepresentation";
 import PageObject from "../../../components/PageObject";
 
@@ -13,21 +12,24 @@ export default class UserDetailsPage extends PageObject {
   lastNameValue: string;
   requiredUserActions: RequiredActionAlias[];
   identityProviderLinksTab: string;
+  detailsTab: string;
   consentsTab: string;
   sessionsTab: string;
 
   constructor() {
     super();
-    this.saveBtn = "save-user";
+    this.saveBtn = "user-creation-save";
     this.cancelBtn = "cancel-create-user";
-    this.emailInput = "email-input";
-    this.emailValue = () => "example" + "_" + uuid() + "@example.com";
-    this.firstNameInput = "firstName-input";
+    this.emailInput = "email";
+    this.emailValue = () =>
+      "example" + "_" + crypto.randomUUID() + "@example.com";
+    this.firstNameInput = "firstName";
     this.firstNameValue = "firstname";
-    this.lastNameInput = "lastName-input";
+    this.lastNameInput = "lastName";
     this.lastNameValue = "lastname";
     this.requiredUserActions = [RequiredActionAlias.UPDATE_PASSWORD];
     this.identityProviderLinksTab = "identity-provider-links-tab";
+    this.detailsTab = "user-details-tab";
     this.consentsTab = "user-consents-tab";
     this.sessionsTab = "user-sessions-tab";
   }
@@ -62,6 +64,11 @@ export default class UserDetailsPage extends PageObject {
   cancel() {
     cy.findByTestId(this.cancelBtn).click();
 
+    return this;
+  }
+
+  goToDetailsTab() {
+    cy.findByTestId(this.detailsTab).click();
     return this;
   }
 

@@ -17,6 +17,8 @@
 
 package org.keycloak.testsuite.client.policies;
 
+import static org.hamcrest.Matchers.emptyOrNullString;
+import static org.hamcrest.Matchers.is;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
@@ -451,11 +453,13 @@ public class ClientPoliciesExecutorTest extends AbstractClientPoliciesTest {
     @Test
     public void testSecureRequestObjectExecutor() throws Exception {
         Integer availablePeriod = Integer.valueOf(SecureRequestObjectExecutor.DEFAULT_AVAILABLE_PERIOD + 400);
+        Integer allowedClockSkew = Integer.valueOf(SecureRequestObjectExecutor.DEAULT_ALLOWED_CLOCK_SKEW + 15); // 30 sec
+
         // register profiles
         String json = (new ClientProfilesBuilder()).addProfile(
                 (new ClientProfileBuilder()).createProfile(PROFILE_NAME, "Prvy Profil")
                         .addExecutor(SecureRequestObjectExecutorFactory.PROVIDER_ID,
-                                createSecureRequestObjectExecutorConfig(availablePeriod, null))
+                                createSecureRequestObjectExecutorConfig(availablePeriod, null, null, allowedClockSkew))
                         .toRepresentation()
         ).toString();
         updateProfiles(json);
@@ -558,12 +562,32 @@ public class ClientPoliciesExecutorTest extends AbstractClientPoliciesTest {
 
         // check whether request object not yet being processed
         requestObject = createValidRequestObjectForSecureRequestObjectExecutor(clientId);
-        requestObject.nbf(requestObject.getNbf() + 600);
+        requestObject.nbf(requestObject.getNbf() + allowedClockSkew + 10);
         registerRequestObject(requestObject, clientId, Algorithm.ES256, false);
         oauth.openLoginForm();
         assertEquals(OAuthErrorException.INVALID_REQUEST_OBJECT, oauth.getCurrentQuery().get(OAuth2Constants.ERROR));
         assertEquals("Request not yet being processed", oauth.getCurrentQuery().get(OAuth2Constants.ERROR_DESCRIPTION));
 
+        // nbf ahead within allowed clock skew
+        requestObject = createValidRequestObjectForSecureRequestObjectExecutor(clientId);
+        requestObject.nbf(requestObject.getNbf() + allowedClockSkew - 10);
+        registerRequestObject(requestObject, clientId, Algorithm.ES256, false);
+        successfulLoginAndLogout(clientId, clientSecret);
+
+        // check whether request object issued in the future
+        requestObject = createValidRequestObjectForSecureRequestObjectExecutor(clientId);
+        requestObject.iat(requestObject.getIat() + allowedClockSkew + 10);
+        registerRequestObject(requestObject, clientId, Algorithm.ES256, false);
+        oauth.openLoginForm();
+        assertEquals(OAuthErrorException.INVALID_REQUEST_OBJECT, oauth.getCurrentQuery().get(OAuth2Constants.ERROR));
+        assertEquals("Request issued in the future", oauth.getCurrentQuery().get(OAuth2Constants.ERROR_DESCRIPTION));
+
+        // iat ahead within allowed clock skew
+        requestObject = createValidRequestObjectForSecureRequestObjectExecutor(clientId);
+        requestObject.iat(requestObject.getIat() + allowedClockSkew - 10);
+        registerRequestObject(requestObject, clientId, Algorithm.ES256, false);
+        successfulLoginAndLogout(clientId, clientSecret);
+        
         // check whether request object's available period is short
         requestObject = createValidRequestObjectForSecureRequestObjectExecutor(clientId);
         requestObject.exp(requestObject.getNbf() + availablePeriod.intValue() + 1);
@@ -948,7 +972,7 @@ public class ClientPoliciesExecutorTest extends AbstractClientPoliciesTest {
             clientRep.setIdTokenSignedResponseAlg(Algorithm.PS256);
             clientRep.setTokenEndpointAuthSigningAlg(Algorithm.PS256);
         });
-        events.expect(EventType.CLIENT_REGISTER).client(cAppDynamicClientId).user(Matchers.isEmptyOrNullString()).assertEvent();
+        events.expect(EventType.CLIENT_REGISTER).client(cAppDynamicClientId).user(is(emptyOrNullString())).assertEvent();
 
         // update dynamically - fail
         try {

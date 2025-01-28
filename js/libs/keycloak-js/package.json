@@ -1,35 +1,27 @@
 {
   "name": "keycloak-js",
   "version": "999.0.0-SNAPSHOT",
-  "description": "A client-side JavaScript OpenID Connect library that can be used to secure web applications",
-  "main": "./dist/keycloak.js",
-  "module": "./dist/keycloak.mjs",
-  "types": "./dist/keycloak.d.ts",
-  "files": [
-    "dist"
-  ],
-  "scripts": {
-    "build": "wireit",
-    "prepublishOnly": "pnpm run build"
-  },
-  "wireit": {
-    "build": {
-      "command": "rollup --config --configPlugin typescript",
-      "files": [
-        "src/**",
-        "package.json",
-        "rollup.config.ts",
-        "tsconfig.json"
-      ],
-      "output": [
-        "dist/**",
-        "!dist/*.d.ts"
-      ]
+  "type": "module",
+  "description": "A client-side JavaScript OpenID Connect library that can be used to secure web applications.",
+  "exports": {
+    ".": {
+      "types": "./lib/keycloak.d.ts",
+      "default": "./lib/keycloak.js"
+    },
+    "./authz": {
+      "types": "./lib/keycloak-authz.d.ts",
+      "default": "./lib/keycloak-authz.js"
     }
+  },
+  "files": [
+    "lib"
+  ],
+  "publishConfig": {
+    "access": "public"
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/keycloak/keycloak"
+    "url": "git+https://github.com/keycloak/keycloak.git"
   },
   "author": "Keycloak",
   "license": "Apache-2.0",
@@ -40,19 +32,5 @@
     "oauth",
     "oauth2",
     "authentication"
-  ],
-  "devDependencies": {
-    "@rollup/plugin-commonjs": "^25.0.7",
-    "@rollup/plugin-inject": "^5.0.5",
-    "@rollup/plugin-node-resolve": "^15.2.3",
-    "@rollup/plugin-terser": "^0.4.4",
-    "@rollup/plugin-typescript": "^11.1.5",
-    "es6-promise": "^4.2.8",
-    "rollup": "^4.2.0"
-  },
-  "dependencies": {
-    "base64-js": "^1.5.1",
-    "js-sha256": "^0.10.1",
-    "jwt-decode": "^4.0.0"
-  }
+  ]
 }

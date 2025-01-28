@@ -1,12 +1,13 @@
-import { PropsWithChildren, useEffect, useMemo } from "react";
+import { PropsWithChildren } from "react";
 
 import {
   createNamedContext,
+  useFetch,
   useRequiredContext,
   useStoredState,
-} from "ui-shared";
+} from "@keycloak/keycloak-ui-shared";
+import { useAdminClient } from "../admin-client";
 import { useRealm } from "./realm-context/RealmContext";
-import { useRealms } from "./RealmsContext";
 
 const MAX_REALMS = 4;
 
@@ -16,39 +17,42 @@ export const RecentRealmsContext = createNamedContext<string[] | undefined>(
 );
 
 export const RecentRealmsProvider = ({ children }: PropsWithChildren) => {
-  const { realms } = useRealms();
   const { realm } = useRealm();
+  const { adminClient } = useAdminClient();
+
   const [storedRealms, setStoredRealms] = useStoredState(
     localStorage,
     "recentRealms",
     [realm],
   );
 
-  const recentRealms = useMemo(
-    () => filterRealmNames(realms, storedRealms),
-    [realms, storedRealms],
+  useFetch(
+    () => {
+      return Promise.all(
+        [...new Set([realm, ...storedRealms])].map(async (realm) => {
+          try {
+            const response = await adminClient.realms.findOne({ realm });
+            if (response) {
+              return response.realm;
+            }
+          } catch {
+            return undefined;
+          }
+        }),
+      );
+    },
+    (realms) => {
+      const newRealms = realms.filter((r) => r) as string[];
+      setStoredRealms(newRealms.slice(0, MAX_REALMS));
+    },
+    [realm],
   );
 
-  useEffect(() => {
-    const newRealms = [...new Set([realm, ...recentRealms])];
-    setStoredRealms(newRealms.slice(0, MAX_REALMS));
-  }, [realm]);
-
   return (
-    <RecentRealmsContext.Provider value={recentRealms}>
+    <RecentRealmsContext.Provider value={storedRealms}>
       {children}
     </RecentRealmsContext.Provider>
   );
 };
 
 export const useRecentRealms = () => useRequiredContext(RecentRealmsContext);
-
-function filterRealmNames(realms: string[], storedRealms: string[]) {
-  // If no realms have been set yet we can't filter out any non-existent realm names.
-  if (realms.length === 0) {
-    return storedRealms;
-  }
-
-  // Only keep realm names that actually still exist.
-  return storedRealms.filter((realm) => realms.includes(realm));
-}

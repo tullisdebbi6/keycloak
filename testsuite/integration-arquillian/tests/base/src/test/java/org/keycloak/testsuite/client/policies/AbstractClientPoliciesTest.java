@@ -38,6 +38,7 @@ import static org.keycloak.testsuite.util.ClientPoliciesUtil.createSecureClientA
 import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.nio.charset.StandardCharsets;
 import java.security.KeyFactory;
 import java.security.KeyPair;
 import java.security.MessageDigest;
@@ -82,7 +83,6 @@ import org.junit.Before;
 import org.junit.Rule;
 import org.keycloak.OAuth2Constants;
 import org.keycloak.OAuthErrorException;
-import org.keycloak.adapters.AdapterUtils;
 import org.keycloak.admin.client.resource.ClientResource;
 import org.keycloak.authentication.authenticators.client.ClientIdAndSecretAuthenticator;
 import org.keycloak.authentication.authenticators.client.JWTClientAuthenticator;
@@ -202,6 +202,9 @@ public abstract class AbstractClientPoliciesTest extends AbstractKeycloakTest {
     protected static final String FAPI_CIBA_PROFILE_NAME = "fapi-ciba";
     protected static final String FAPI2_SECURITY_PROFILE_NAME = "fapi-2-security-profile";
     protected static final String FAPI2_MESSAGE_SIGNING_PROFILE_NAME = "fapi-2-message-signing";
+    protected static final String OAUTH2_1_CONFIDENTIAL_CLIENT_PROFILE_NAME = "oauth-2-1-for-confidential-client";
+    protected static final String OAUTH2_1_PUBLIC_CLIENT_PROFILE_NAME = "oauth-2-1-for-public-client";
+    protected static final String SAML_SECURITY_PROFILE_NAME = "saml-security-profile";
 
     protected static final String ERR_MSG_MISSING_NONCE = "Missing parameter: nonce";
     protected static final String ERR_MSG_MISSING_STATE = "Missing parameter: state";
@@ -301,7 +304,6 @@ public abstract class AbstractClientPoliciesTest extends AbstractKeycloakTest {
                             createClientScopesConditionConfig(ClientScopesConditionFactory.OPTIONAL, Arrays.asList(SAMPLE_CLIENT_ROLE)))
                         .addProfile("ordinal-test-profile")
                         .addProfile("lack-of-builtin-field-test-profile")
-                        .addProfile("ordinal-test-profile")
 
                     .toRepresentation();
 
@@ -336,7 +338,7 @@ public abstract class AbstractClientPoliciesTest extends AbstractKeycloakTest {
         ClientProfilesRepresentation actualProfilesRep = getProfilesWithGlobals();
 
         // same profiles
-        assertExpectedProfiles(actualProfilesRep, Arrays.asList(FAPI1_BASELINE_PROFILE_NAME, FAPI1_ADVANCED_PROFILE_NAME, FAPI_CIBA_PROFILE_NAME, FAPI2_SECURITY_PROFILE_NAME, FAPI2_MESSAGE_SIGNING_PROFILE_NAME), Arrays.asList("ordinal-test-profile", "lack-of-builtin-field-test-profile"));
+        assertExpectedProfiles(actualProfilesRep, Arrays.asList(FAPI1_BASELINE_PROFILE_NAME, FAPI1_ADVANCED_PROFILE_NAME, FAPI_CIBA_PROFILE_NAME, FAPI2_SECURITY_PROFILE_NAME, FAPI2_MESSAGE_SIGNING_PROFILE_NAME, OAUTH2_1_CONFIDENTIAL_CLIENT_PROFILE_NAME, OAUTH2_1_PUBLIC_CLIENT_PROFILE_NAME, SAML_SECURITY_PROFILE_NAME), Arrays.asList("ordinal-test-profile", "lack-of-builtin-field-test-profile"));
 
         // each profile - fapi-1-baseline
         ClientProfileRepresentation actualProfileRep =  getProfileRepresentation(actualProfilesRep, FAPI1_BASELINE_PROFILE_NAME, true);
@@ -474,6 +476,10 @@ public abstract class AbstractClientPoliciesTest extends AbstractKeycloakTest {
             case Algorithm.ES512:
                 keyAlg = KeyType.EC;
                 break;
+            case Algorithm.Ed25519:
+            case Algorithm.Ed448:
+                keyAlg = KeyType.OKP;
+                break;
             default :
                 throw new RuntimeException("Unsupported signature algorithm");
         }
@@ -496,7 +502,7 @@ public abstract class AbstractClientPoliciesTest extends AbstractKeycloakTest {
 
     private JsonWebToken createRequestToken(String clientId, String realmInfoUrl) {
         JsonWebToken reqToken = new JsonWebToken();
-        reqToken.id(AdapterUtils.generateId());
+        reqToken.id(KeycloakModelUtils.generateId());
         reqToken.issuer(clientId);
         reqToken.subject(clientId);
         reqToken.audience(realmInfoUrl);
@@ -568,7 +574,7 @@ public abstract class AbstractClientPoliciesTest extends AbstractKeycloakTest {
         CloseableHttpClient client = new DefaultHttpClient();
         try {
             HttpPost post = new HttpPost(requestUrl);
-            UrlEncodedFormEntity formEntity = new UrlEncodedFormEntity(parameters, "UTF-8");
+            UrlEncodedFormEntity formEntity = new UrlEncodedFormEntity(parameters, StandardCharsets.UTF_8);
             post.setEntity(formEntity);
             return client.execute(post);
         } finally {
@@ -642,7 +648,7 @@ public abstract class AbstractClientPoliciesTest extends AbstractKeycloakTest {
 
     // OAuth2 protocol operation
 
-    protected void doIntrospectAccessToken(OAuthClient.AccessTokenResponse tokenRes, String username, String clientId, String clientSecret) throws IOException {
+    protected void doIntrospectAccessToken(OAuthClient.AccessTokenResponse tokenRes, String username, String clientId, String sessionId, String clientSecret) throws IOException {
         String tokenResponse = oauth.introspectAccessTokenWithClientCredential(clientId, clientSecret, tokenRes.getAccessToken());
         JsonNode jsonNode = objectMapper.readTree(tokenResponse);
         assertEquals(true, jsonNode.get("active").asBoolean());
@@ -652,10 +658,10 @@ public abstract class AbstractClientPoliciesTest extends AbstractKeycloakTest {
         assertEquals(true, rep.isActive());
         assertEquals(clientId, rep.getClientId());
         assertEquals(clientId, rep.getIssuedFor());
-        events.expect(EventType.INTROSPECT_TOKEN).client(clientId).user((String)null).clearDetails().assertEvent();
+        events.expect(EventType.INTROSPECT_TOKEN).client(clientId).session(sessionId).user((String)null).clearDetails().assertEvent();
     }
 
-    protected void doTokenRevoke(String refreshToken, String clientId, String clientSecret, String userId, boolean isOfflineAccess) throws IOException {
+    protected void doTokenRevoke(String refreshToken, String clientId, String clientSecret, String userId, String sessionId, boolean isOfflineAccess) throws IOException {
         oauth.clientId(clientId);
         oauth.doTokenRevoke(refreshToken, "refresh_token", clientSecret);
 
@@ -666,7 +672,11 @@ public abstract class AbstractClientPoliciesTest extends AbstractKeycloakTest {
         if (isOfflineAccess) assertEquals("Offline user session not found", tokenRes.getErrorDescription());
         else assertEquals("Session not active", tokenRes.getErrorDescription());
 
-        events.expect(EventType.REVOKE_GRANT).clearDetails().client(clientId).user(userId).assertEvent();
+        events.expect(EventType.REVOKE_GRANT).clearDetails()
+                .client(clientId)
+                .user(userId)
+                .session(sessionId)
+                .assertEvent();
     }
 
     // Client CRUD operation by Admin REST API primitives
@@ -1524,9 +1534,9 @@ public abstract class AbstractClientPoliciesTest extends AbstractKeycloakTest {
         assertEquals(sessionId, refreshedRefreshToken.getSessionState());
         assertEquals(findUserByUsername(adminClient.realm(REALM_NAME), userName).getId(), refreshedToken.getSubject());
 
-        doIntrospectAccessToken(refreshResponse, userName, clientId, clientSecret);
+        doIntrospectAccessToken(refreshResponse, userName, clientId, sessionId, clientSecret);
 
-        doTokenRevoke(refreshResponse.getRefreshToken(), clientId, clientSecret, userId, false);
+        doTokenRevoke(refreshResponse.getRefreshToken(), clientId, clientSecret, userId, sessionId, false);
     }
 
     protected void failLoginByNotFollowingPKCE(String clientId) {

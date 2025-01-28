@@ -17,7 +17,9 @@
 package org.keycloak.testsuite.account.custom;
 
 import org.jboss.arquillian.graphene.page.Page;
+import org.junit.Before;
 import org.junit.Test;
+import org.keycloak.admin.client.resource.UserProfileResource;
 import org.keycloak.models.AuthenticationExecutionModel.Requirement;
 import org.keycloak.models.utils.DefaultAuthenticationFlows;
 import org.keycloak.models.utils.TimeBasedOTP;
@@ -29,6 +31,7 @@ import org.keycloak.representations.idm.RoleRepresentation;
 import org.keycloak.testsuite.admin.ApiUtil;
 import org.keycloak.testsuite.admin.Users;
 import org.keycloak.testsuite.auth.page.login.OneTimeCode;
+import org.keycloak.testsuite.forms.VerifyProfileTest;
 import org.keycloak.testsuite.pages.LoginConfigTotpPage;
 import org.keycloak.testsuite.pages.LoginTotpPage;
 import org.keycloak.testsuite.pages.PageUtils;
@@ -84,6 +87,12 @@ public class CustomAuthFlowOTPTest extends AbstractCustomAccountManagementTest {
     public void setDefaultPageUriParameters() {
         super.setDefaultPageUriParameters();
         testLoginOneTimeCodePage.setAuthRealm(testRealmPage);
+    }
+
+    @Before
+    public void configureUserProfile() {
+        UserProfileResource userProfileRes = testRealmResource().users().userProfile();
+        VerifyProfileTest.enableUnmanagedAttributes(userProfileRes);
     }
 
     private void configureRequiredActions() {
@@ -430,6 +439,25 @@ public class CustomAuthFlowOTPTest extends AbstractCustomAccountManagementTest {
         assertCurrentUrlStartsWith(testLoginOneTimeCodePage);
     }
 
+    @Test
+    public void conditionalOTPEmptyConfiguration() {
+        // prepare config empty
+        setConditionalOTPForm(null);
+
+        // test OTP is required
+        driver.navigate().to(oauth.getLoginFormUrl());
+        testRealmLoginPage.form().login(testUser);
+
+        assertTrue(loginConfigTotpPage.isCurrent());
+
+        configureOTP();
+        driver.navigate().to(oauth.getLoginFormUrl());
+        testRealmLoginPage.form().login(testUser);
+
+        // verify that the page is login page, not totp setup
+        assertCurrentUrlStartsWith(testLoginOneTimeCodePage);
+    }
+
     private RoleRepresentation getOrCreateOTPRole() {
         try {
             return testRealmResource().roles().get("otp_role").toRepresentation();
@@ -517,12 +545,12 @@ public class CustomAuthFlowOTPTest extends AbstractCustomAccountManagementTest {
         flow.setTopLevel(true);
         flow.setBuiltIn(false);
         
-        Response response = getAuthMgmtResource().createFlow(flow);
-        assertEquals(flowAlias + " create success", 201, response.getStatus());
-        response.close();
+        try (Response response = getAuthMgmtResource().createFlow(flow)) {
+            assertEquals(flowAlias + " create success", 201, response.getStatus());
+        }
         
         //add execution - username-password form
-        Map<String, String> data = new HashMap<>();
+        Map<String, Object> data = new HashMap<>();
         data.put("provider", "auth-username-password-form");
         getAuthMgmtResource().addExecution(flowAlias, data);
         
@@ -541,20 +569,22 @@ public class CustomAuthFlowOTPTest extends AbstractCustomAccountManagementTest {
         RealmRepresentation realm = testRealmResource().toRepresentation();
         realm.setBrowserFlow(flowAlias);
         testRealmResource().update(realm);
-        
-        //get executionId
-        String executionId = getExecution(flowAlias, provider).getId();
 
-        //prepare auth config
-        AuthenticatorConfigRepresentation authConfig = new AuthenticatorConfigRepresentation();
-        authConfig.setAlias("Config alias");
-        authConfig.setConfig(config);
+        if (config != null) {
+            //get executionId
+            String executionId = getExecution(flowAlias, provider).getId();
 
-        //add auth config to the execution
-        response = getAuthMgmtResource().newExecutionConfig(executionId, authConfig);
-        assertEquals("new execution success", 201, response.getStatus());
-        getCleanup().addAuthenticationConfigId(ApiUtil.getCreatedId(response));
-        response.close();
+            //prepare auth config
+            AuthenticatorConfigRepresentation authConfig = new AuthenticatorConfigRepresentation();
+            authConfig.setAlias("Config alias");
+            authConfig.setConfig(config);
+
+            //add auth config to the execution
+            try (Response response = getAuthMgmtResource().newExecutionConfig(executionId, authConfig)) {
+                assertEquals("new execution success", 201, response.getStatus());
+                getCleanup().addAuthenticationConfigId(ApiUtil.getCreatedId(response));
+            }
+        }
     }
 
 }

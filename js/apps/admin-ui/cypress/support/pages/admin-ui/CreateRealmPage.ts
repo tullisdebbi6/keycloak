@@ -1,26 +1,37 @@
+import FormValidation from "../../forms/FormValidation";
+
 export default class CreateRealmPage {
-  #clearBtn = ".pf-c-file-upload__file-select button:last-child";
   #modalClearBtn = "clear-button";
-  #realmNameInput = "#kc-realm-name";
-  #enabledSwitch = '[for="kc-realm-enabled-switch"] span.pf-c-switch__toggle';
-  #createBtn = '.pf-c-form__group:last-child button[type="submit"]';
-  #cancelBtn = '.pf-c-form__group:last-child button[type="button"]';
-  #codeEditor = ".pf-c-code-editor__code";
+  #realmNameInput = "realm";
+  #enabledSwitch = ".pf-v5-c-toolbar .pf-v5-c-switch__toggle";
+  #createBtn = '.pf-v5-c-form__group:last-child button[type="submit"]';
+  #cancelBtn = '.pf-v5-c-form__group:last-child button[type="button"]';
+  #codeEditor = ".w-tc-editor-text";
+
+  #getClearBtn() {
+    return cy.findByText("Clear");
+  }
 
   fillRealmName(realmName: string) {
-    cy.get(this.#realmNameInput).clear().type(realmName);
+    cy.findByTestId(this.#realmNameInput).clear().type(realmName);
 
     return this;
   }
 
   fillCodeEditor() {
-    cy.get(this.#codeEditor).click().type("clear this field");
+    cy.get(this.#codeEditor).type("clear this field");
 
     return this;
   }
 
-  createRealm() {
-    cy.get(this.#createBtn).click();
+  createRealm(wait = true) {
+    if (wait) {
+      cy.intercept("POST", "/admin/realms").as("createRealm");
+      cy.get(this.#createBtn).click();
+      cy.wait("@createRealm");
+    } else {
+      cy.get(this.#createBtn).click();
+    }
 
     return this;
   }
@@ -38,17 +49,14 @@ export default class CreateRealmPage {
   }
 
   clearTextField() {
-    cy.get(this.#clearBtn).click();
+    this.#getClearBtn().click();
     cy.findByTestId(this.#modalClearBtn).click();
 
     return this;
   }
 
   verifyRealmNameFieldInvalid() {
-    cy.get(this.#realmNameInput)
-      .next("div")
-      .contains("Required field")
-      .should("have.class", "pf-m-error");
+    FormValidation.assertRequired(cy.findByTestId(this.#realmNameInput));
 
     return this;
   }

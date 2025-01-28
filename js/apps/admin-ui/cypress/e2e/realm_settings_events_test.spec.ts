@@ -1,4 +1,3 @@
-import { v4 as uuid } from "uuid";
 import SidebarPage from "../support/pages/admin-ui/SidebarPage";
 import LoginPage from "../support/pages/LoginPage";
 import RealmSettingsPage from "../support/pages/admin-ui/manage/realm_settings/RealmSettingsPage";
@@ -17,7 +16,7 @@ const realmSettingsPage = new RealmSettingsPage();
 const keysTab = new KeysTab();
 
 describe("Realm settings events tab tests", () => {
-  const realmName = "Realm_" + uuid();
+  const realmName = "Realm_" + crypto.randomUUID();
   const listingPage = new ListingPage();
 
   beforeEach(() => {
@@ -89,12 +88,6 @@ describe("Realm settings events tab tests", () => {
     return this;
   };
 
-  const addBundle = () => {
-    realmSettingsPage.addKeyValuePair("key_" + uuid(), "value_" + uuid());
-
-    return this;
-  };
-
   it("Enable user events", () => {
     cy.intercept("GET", `/admin/realms/${realmName}/events/config`).as("load");
     sidebarPage.goToRealmSettings();
@@ -150,6 +143,7 @@ describe("Realm settings events tab tests", () => {
     cy.findByTestId("option-ecdsa-generated").click();
     realmSettingsPage.enterUIDisplayName("test_ecdsa-generated");
     realmSettingsPage.toggleSwitch("active", false);
+    realmSettingsPage.toggleSwitch("ecGenerateCertificate", false);
     realmSettingsPage.addProvider();
 
     realmSettingsPage.toggleAddProviderDropdown();
@@ -240,40 +234,11 @@ describe("Realm settings events tab tests", () => {
     realmSettingsPage.checkKeyPublic();
   });
 
-  it("add locale", () => {
-    sidebarPage.goToRealmSettings();
-
-    cy.findByTestId("rs-localization-tab").click();
-    cy.findByTestId("internationalization-disabled").click({ force: true });
-
-    cy.get(realmSettingsPage.supportedLocalesTypeahead)
-      .click()
-      .get(".pf-c-select__menu-item")
-      .contains("dansk")
-      .click();
-    cy.get("#kc-l-supported-locales").click();
-
-    cy.intercept("GET", `/admin/realms/${realmName}/localization/en*`).as(
-      "load",
-    );
-
-    cy.findByTestId("localization-tab-save").click();
-    cy.wait("@load");
-
-    addBundle();
-
-    masthead.checkNotificationMessage(
-      "Success! The message bundle has been added.",
-    );
-    realmSettingsPage.setDefaultLocale("dansk");
-    cy.findByTestId("localization-tab-save").click();
-  });
-
   it("Realm header settings", () => {
     sidebarPage.goToRealmSettings();
     cy.findByTestId("rs-security-defenses-tab").click();
-    cy.findByTestId("headers-form-tab-save").should("be.disabled");
-    cy.get("#xFrameOptions").clear().type("DENY");
+    cy.findByTestId("browserSecurityHeaders.xFrameOptions").clear();
+    cy.findByTestId("browserSecurityHeaders.xFrameOptions").type("DENY");
     cy.findByTestId("headers-form-tab-save").should("be.enabled").click();
 
     masthead.checkNotificationMessage("Realm successfully updated");
@@ -284,9 +249,10 @@ describe("Realm settings events tab tests", () => {
     cy.findAllByTestId("rs-security-defenses-tab").click();
     cy.get("#pf-tab-20-bruteForce").click();
 
-    cy.findByTestId("brute-force-tab-save").should("be.disabled");
-
-    cy.get("#bruteForceProtected").click({ force: true });
+    cy.get("#kc-brute-force-mode").click();
+    cy.findByTestId("select-brute-force-mode")
+      .contains("Lockout temporarily")
+      .click();
     cy.findByTestId("waitIncrementSeconds").type("1");
     cy.findByTestId("maxFailureWaitSeconds").type("1");
     cy.findByTestId("maxDeltaTimeSeconds").type("1");
@@ -378,6 +344,10 @@ describe("Realm settings events tab tests", () => {
       "have.value",
       1,
     );
+    cy.findByTestId(realmSettingsPage.parRequestUriLifespanInput).should(
+      "have.value",
+      2,
+    );
     cy.findByTestId(realmSettingsPage.accessTokenLifespanImplicitInput).should(
       "have.value",
       2,
@@ -442,7 +412,6 @@ describe("Realm settings events tab tests", () => {
   });
 
   it("Should remove all events from event listener and re-save original", () => {
-    realmSettingsPage.shouldSaveEventListener();
     realmSettingsPage.shouldRemoveAllEventListeners();
     realmSettingsPage.shouldReSaveEventListener();
   });

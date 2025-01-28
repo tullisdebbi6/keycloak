@@ -22,10 +22,11 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.Assert.assertTrue;
+import static org.keycloak.testsuite.AssertEvents.isUUID;
 import static org.keycloak.testsuite.admin.AbstractAdminTest.loadJson;
 
 import java.io.IOException;
-import java.io.UnsupportedEncodingException;
+import java.nio.charset.StandardCharsets;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
@@ -37,7 +38,6 @@ import jakarta.ws.rs.core.Response.Status;
 
 import org.apache.commons.io.output.ByteArrayOutputStream;
 import org.apache.http.NameValuePair;
-import org.apache.http.client.HttpClient;
 import org.apache.http.client.entity.UrlEncodedFormEntity;
 import org.apache.http.client.methods.CloseableHttpResponse;
 import org.apache.http.client.methods.HttpPost;
@@ -55,7 +55,8 @@ import org.keycloak.admin.client.Keycloak;
 import org.keycloak.admin.client.resource.RealmResource;
 import org.keycloak.admin.client.resource.UserResource;
 import org.keycloak.broker.provider.util.SimpleHttp;
-import org.keycloak.representations.account.UserRepresentation;
+import org.keycloak.events.Details;
+import org.keycloak.events.EventType;
 import org.keycloak.representations.idm.OAuth2ErrorRepresentation;
 import org.keycloak.representations.idm.RealmRepresentation;
 import org.keycloak.representations.idm.UserSessionRepresentation;
@@ -63,6 +64,7 @@ import org.keycloak.representations.oidc.TokenMetadataRepresentation;
 import org.keycloak.testsuite.AbstractKeycloakTest;
 import org.keycloak.testsuite.Assert;
 import org.keycloak.testsuite.AssertEvents;
+import org.keycloak.testsuite.broker.util.SimpleHttpDefault;
 import org.keycloak.testsuite.pages.LoginPage;
 import org.keycloak.testsuite.util.AdminClientUtil;
 import org.keycloak.testsuite.util.ClientManager;
@@ -71,7 +73,9 @@ import org.keycloak.testsuite.util.OAuthClient;
 import org.keycloak.testsuite.util.OAuthClient.AccessTokenResponse;
 import org.keycloak.testsuite.util.RealmBuilder;
 import org.keycloak.testsuite.util.UserInfoClientUtil;
+import org.keycloak.testsuite.util.InfinispanTestTimeServiceRule;
 import org.keycloak.util.JsonSerialization;
+import org.keycloak.util.TokenUtil;
 
 /**
  * @author <a href="mailto:yoshiyuki.tabata.jy@hitachi.com">Yoshiyuki Tabata</a>
@@ -85,6 +89,9 @@ public class TokenRevocationTest extends AbstractKeycloakTest {
 
     @Rule
     public AssertEvents events = new AssertEvents(this);
+
+    @Rule
+    public InfinispanTestTimeServiceRule ispnTestTimeService = new InfinispanTestTimeServiceRule(this);
 
     @Override
     public void beforeAbstractKeycloakTest() throws Exception {
@@ -174,6 +181,23 @@ public class TokenRevocationTest extends AbstractKeycloakTest {
     }
 
     @Test
+    public void testRevokedAccessTokenCacheLifespan() throws Exception {
+        oauth.clientId("test-app");
+        OAuthClient.AccessTokenResponse tokenResponse = oauth.doGrantAccessTokenRequest("password", "test-user@localhost", "password");
+
+        isTokenEnabled(tokenResponse, "test-app");
+
+        CloseableHttpResponse response = oauth.doTokenRevoke(tokenResponse.getAccessToken(), "access_token", "password");
+        assertThat(response, Matchers.statusCodeIsHC(Status.OK));
+
+        setTimeOffset(adminClient.realm(oauth.getRealm()).toRepresentation().getAccessTokenLifespan());
+
+        isAccessTokenDisabled(tokenResponse.getAccessToken(), "test-app");
+
+        setTimeOffset(0);
+    }
+
+    @Test
     public void testRevokeOfflineToken() throws Exception {
         oauth.scope(OAuth2Constants.OFFLINE_ACCESS);
         oauth.clientId("test-app");
@@ -186,6 +210,26 @@ public class TokenRevocationTest extends AbstractKeycloakTest {
         assertThat(response, Matchers.statusCodeIsHC(Status.OK));
 
         isTokenDisabled(tokenResponse, "test-app");
+    }
+
+    @Test
+    public void testRevokeOfflineTokenWithOnlineSSOSession() throws Exception {
+        OAuthClient.AccessTokenResponse tokenResponse1 = login("test-app", "test-user@localhost", "password");
+
+        // Offline login of same client in same SSO session as previous login
+        oauth.scope(OAuth2Constants.OFFLINE_ACCESS);
+        OAuthClient.AccessTokenResponse tokenResponse2 = login("test-app", "test-user@localhost", "password");
+
+        // Session IDs of "offline" and online session are same for now. This may change in the future
+        Assert.assertEquals(tokenResponse1.getSessionState(), tokenResponse2.getSessionState());
+
+        isTokenEnabled(tokenResponse2, "test-app");
+
+        // Disable both offline and refresh
+        CloseableHttpResponse response = oauth.doTokenRevoke(tokenResponse2.getRefreshToken(), "refresh_token", "password");
+        assertThat(response, Matchers.statusCodeIsHC(Status.OK));
+
+        isTokenDisabled(tokenResponse2, "test-app");
     }
 
     @Test
@@ -263,6 +307,40 @@ public class TokenRevocationTest extends AbstractKeycloakTest {
         assertEquals(OAuthErrorException.INVALID_REQUEST, errorRep.getError());
     }
 
+    @Test
+    public void testRevokeSingleNormalSession() throws Exception {
+        testRevokeSingleSession(TokenUtil.TOKEN_TYPE_REFRESH);
+    }
+
+    @Test
+    public void testRevokeSingleOfflineSession() throws Exception {
+        oauth.scope(OAuth2Constants.OFFLINE_ACCESS);
+        testRevokeSingleSession(TokenUtil.TOKEN_TYPE_OFFLINE);
+    }
+
+    private void testRevokeSingleSession(String expectedTokenType) throws Exception {
+        oauth.clientId("test-app");
+        OAuthClient.AccessTokenResponse tokenResponse = oauth.doGrantAccessTokenRequest("password", "test-user@localhost",
+                "password");
+        OAuthClient.AccessTokenResponse tokenResponse2 = oauth.doGrantAccessTokenRequest("password", "test-user@localhost",
+                "password");
+
+        isTokenEnabled(tokenResponse, "test-app");
+        isTokenEnabled(tokenResponse2, "test-app");
+
+        CloseableHttpResponse response = oauth.doTokenRevoke(tokenResponse.getRefreshToken(), "refresh_token", "password");
+        assertThat(response, Matchers.statusCodeIsHC(Status.OK));
+        events.expect(EventType.REVOKE_GRANT)
+                .session(tokenResponse.getSessionState())
+                .detail(Details.REFRESH_TOKEN_ID, isUUID())
+                .detail(Details.REFRESH_TOKEN_TYPE, expectedTokenType)
+                .client("test-app")
+                .assertEvent(true);
+
+        isTokenDisabled(tokenResponse, "test-app");
+        isTokenEnabled(tokenResponse2, "test-app");
+    }
+
     private AccessTokenResponse login(String clientId, String username, String password) {
         oauth.clientId(clientId);
         oauth.openLoginForm();
@@ -307,13 +385,13 @@ public class TokenRevocationTest extends AbstractKeycloakTest {
 
         // Test account REST not possible
         String accountUrl = OAuthClient.AUTH_SERVER_ROOT + "/realms/test/account";
-        SimpleHttp accountRequest = SimpleHttp.doGet(accountUrl, restHttpClient)
+        SimpleHttp accountRequest = SimpleHttpDefault.doGet(accountUrl, restHttpClient)
                 .auth(accessTokenString)
                 .acceptJson();
         assertEquals(Status.UNAUTHORIZED.getStatusCode(), accountRequest.asStatus());
 
         // Test admin REST not possible
-        try (Keycloak adminClient = Keycloak.getInstance(OAuthClient.AUTH_SERVER_ROOT, "test", "test-app", accessTokenString)) {
+        try (Keycloak adminClient = Keycloak.getInstance(OAuthClient.AUTH_SERVER_ROOT, "test", "test-app", accessTokenString, AdminClientUtil.getSSLContextWithTruststore())) {
             try {
                 adminClient.realms().realm("test").toRepresentation();
                 Assert.fail("Not expected to obtain realm");
@@ -335,12 +413,7 @@ public class TokenRevocationTest extends AbstractKeycloakTest {
             parameters.add(new BasicNameValuePair(OAuth2Constants.CLIENT_ID, oauth.getClientId()));
             parameters.add(new BasicNameValuePair(OAuth2Constants.CLIENT_SECRET, clientSecret));
 
-            UrlEncodedFormEntity formEntity;
-            try {
-                formEntity = new UrlEncodedFormEntity(parameters, "UTF-8");
-            } catch (UnsupportedEncodingException e) {
-                throw new RuntimeException(e);
-            }
+            UrlEncodedFormEntity formEntity = new UrlEncodedFormEntity(parameters, StandardCharsets.UTF_8);
             post.setEntity(formEntity);
 
             ByteArrayOutputStream out = new ByteArrayOutputStream();

@@ -19,6 +19,7 @@ package org.keycloak.authorization.admin;
 
 import static org.keycloak.models.utils.ModelToRepresentation.toRepresentation;
 
+import java.util.Collections;
 import java.util.HashMap;
 
 import jakarta.ws.rs.Consumes;
@@ -31,6 +32,9 @@ import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 import jakarta.ws.rs.core.UriInfo;
 
+import org.eclipse.microprofile.openapi.annotations.extensions.Extension;
+import org.eclipse.microprofile.openapi.annotations.responses.APIResponse;
+import org.keycloak.authorization.AdminPermissionsSchema;
 import org.keycloak.authorization.AuthorizationProvider;
 import org.keycloak.authorization.model.ResourceServer;
 import org.keycloak.events.admin.OperationType;
@@ -46,14 +50,14 @@ import org.keycloak.representations.idm.authorization.PolicyRepresentation;
 import org.keycloak.representations.idm.authorization.ResourcePermissionRepresentation;
 import org.keycloak.representations.idm.authorization.ResourceRepresentation;
 import org.keycloak.representations.idm.authorization.ResourceServerRepresentation;
+import org.keycloak.services.resources.KeycloakOpenAPI;
 import org.keycloak.services.resources.admin.AdminEventBuilder;
 import org.keycloak.services.resources.admin.permissions.AdminPermissionEvaluator;
-
-import java.util.Collections;
 
 /**
  * @author <a href="mailto:psilva@redhat.com">Pedro Igor</a>
  */
+@Extension(name = KeycloakOpenAPI.Profiles.ADMIN, value = "")
 public class ResourceServerService {
 
     private final AuthorizationProvider authorization;
@@ -73,6 +77,8 @@ public class ResourceServerService {
     }
 
     public ResourceServer create(boolean newClient) {
+        AdminPermissionsSchema.SCHEMA.throwExceptionIfAdminPermissionClient(session, client.getId());
+
         this.auth.realm().requireManageAuthorization();
 
         UserModel serviceAccount = this.session.users().getServiceAccount(client);
@@ -91,9 +97,12 @@ public class ResourceServerService {
     }
 
     @PUT
-    @Consumes("application/json")
-    @Produces("application/json")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    @APIResponse(responseCode = "204", description = "No Content")
     public Response update(ResourceServerRepresentation server) {
+        AdminPermissionsSchema.SCHEMA.throwExceptionIfAdminPermissionClient(session, client.getId());
+
         this.auth.realm().requireManageAuthorization();
         this.resourceServer.setAllowRemoteResourceManagement(server.isAllowRemoteResourceManagement());
         this.resourceServer.setPolicyEnforcementMode(server.getPolicyEnforcementMode());
@@ -103,6 +112,8 @@ public class ResourceServerService {
     }
 
     public void delete() {
+        AdminPermissionsSchema.SCHEMA.throwExceptionIfAdminPermissionClient(session, client.getId());
+
         this.auth.realm().requireManageAuthorization();
         //need to create representation before the object is deleted to be able to get lazy loaded fields
         ResourceServerRepresentation rep = ModelToRepresentation.toRepresentation(resourceServer, client);
@@ -111,24 +122,27 @@ public class ResourceServerService {
     }
 
     @GET
-    @Produces("application/json")
-    public Response findById() {
+    @Produces(MediaType.APPLICATION_JSON)
+    public ResourceServerRepresentation findById() {
         this.auth.realm().requireViewAuthorization();
-        return Response.ok(toRepresentation(this.resourceServer, this.client)).build();
+        return toRepresentation(this.resourceServer, this.client);
     }
 
     @Path("/settings")
     @GET
-    @Produces("application/json")
-    public Response exportSettings() {
+    @Produces(MediaType.APPLICATION_JSON)
+    public ResourceServerRepresentation exportSettings() {
+        AdminPermissionsSchema.SCHEMA.throwExceptionIfAdminPermissionClient(session, client.getId());
         this.auth.realm().requireManageAuthorization();
-        return Response.ok(ModelToRepresentation.toResourceServerRepresentation(session, client)).build();
+        return ModelToRepresentation.toResourceServerRepresentation(session, client);
     }
 
     @Path("/import")
     @POST
     @Consumes(MediaType.APPLICATION_JSON)
+    @APIResponse(responseCode = "204", description = "No Content")
     public Response importSettings(ResourceServerRepresentation rep) {
+        AdminPermissionsSchema.SCHEMA.throwExceptionIfAdminPermissionClient(session, client.getId());
         this.auth.realm().requireManageAuthorization();
 
         rep.setClientId(client.getId());
@@ -156,7 +170,7 @@ public class ResourceServerService {
     }
 
     @Path("/permission")
-    public Object getPermissionTypeResource() {
+    public PermissionService getPermissionTypeResource() {
         this.auth.realm().requireViewAuthorization();
         return new PermissionService(this.resourceServer, this.authorization, this.auth, adminEvent);
     }

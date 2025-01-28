@@ -30,9 +30,10 @@ const emptyStatePage = new EmptyStatePage();
 const modalUtils = new ModalUtils();
 
 export default class AdminEventsTab extends PageObject {
-  #searchAdminEventDrpDwnBtn = "adminEventsSearchSelectorToggle";
+  #searchAdminEventDrpDwnBtn = "dropdown-panel-btn";
   #searchEventsBtn = "search-events-btn";
-  #operationTypesInputFld = ".pf-c-form-control.pf-c-select__toggle-typeahead";
+  #operationTypesInputFld =
+    ".pf-v5-c-form-control.pf-v5-c-select__toggle-typeahead";
   #authAttrDataRow = 'tbody > tr > [data-label="Attribute"]';
   #authValDataRow = 'tbody > tr > [data-label="Value"]';
   #refreshBtn = "refresh-btn";
@@ -199,12 +200,16 @@ export default class AdminEventsTab extends PageObject {
   }
 
   public removeResourcePathChipGroup() {
-    super.removeChipGroup(AdminEventsTabSearchFormFieldsLabel.ResourcePath);
+    super.removeChipGroup(
+      this.genericChipGroupSelector,
+      AdminEventsTabSearchFormFieldsLabel.ResourcePath,
+    );
     return this;
   }
 
   public assertResourceTypesChipGroupExist(exist: boolean) {
     super.assertChipGroupExist(
+      this.genericChipGroupSelector,
       AdminEventsTabSearchFormFieldsLabel.ResourceTypes,
       exist,
     );
@@ -213,6 +218,7 @@ export default class AdminEventsTab extends PageObject {
 
   public assertOperationTypesChipGroupExist(exist: boolean) {
     super.assertChipGroupExist(
+      this.genericChipGroupSelector,
       AdminEventsTabSearchFormFieldsLabel.OperationTypes,
       exist,
     );
@@ -221,6 +227,7 @@ export default class AdminEventsTab extends PageObject {
 
   public assertResourcePathChipGroupExist(exist: boolean) {
     super.assertChipGroupExist(
+      this.genericChipGroupSelector,
       AdminEventsTabSearchFormFieldsLabel.ResourcePath,
       exist,
     );
@@ -232,6 +239,7 @@ export default class AdminEventsTab extends PageObject {
     exist: boolean,
   ) {
     super.assertChipGroupItemExist(
+      this.genericChipGroupSelector,
       AdminEventsTabSearchFormFieldsLabel.ResourcePath,
       itemName,
       exist,
@@ -241,6 +249,7 @@ export default class AdminEventsTab extends PageObject {
 
   public assertRealmChipGroupExist(exist: boolean) {
     super.assertChipGroupExist(
+      this.genericChipGroupSelector,
       AdminEventsTabSearchFormFieldsLabel.Realm,
       exist,
     );
@@ -249,6 +258,7 @@ export default class AdminEventsTab extends PageObject {
 
   public assertClientChipGroupExist(exist: boolean) {
     super.assertChipGroupExist(
+      this.genericChipGroupSelector,
       AdminEventsTabSearchFormFieldsLabel.Client,
       exist,
     );
@@ -256,12 +266,17 @@ export default class AdminEventsTab extends PageObject {
   }
 
   public assertUserChipGroupExist(exist: boolean) {
-    super.assertChipGroupExist(AdminEventsTabSearchFormFieldsLabel.User, exist);
+    super.assertChipGroupExist(
+      this.genericChipGroupSelector,
+      AdminEventsTabSearchFormFieldsLabel.User,
+      exist,
+    );
     return this;
   }
 
   public assertIpAddressChipGroupExist(exist: boolean) {
     super.assertChipGroupExist(
+      this.genericChipGroupSelector,
       AdminEventsTabSearchFormFieldsLabel.IpAddress,
       exist,
     );
@@ -270,6 +285,7 @@ export default class AdminEventsTab extends PageObject {
 
   public assertDateFromChipGroupExist(exist: boolean) {
     super.assertChipGroupExist(
+      this.genericChipGroupSelector,
       AdminEventsTabSearchFormFieldsLabel.DateFrom,
       exist,
     );
@@ -278,6 +294,7 @@ export default class AdminEventsTab extends PageObject {
 
   public assertDateToChipGroupExist(exist: boolean) {
     super.assertChipGroupExist(
+      this.genericChipGroupSelector,
       AdminEventsTabSearchFormFieldsLabel.DateTo,
       exist,
     );

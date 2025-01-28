@@ -1,4 +1,3 @@
-import { v4 as uuid } from "uuid";
 import GroupModal from "../support/pages/admin-ui/manage/groups/GroupModal";
 import GroupDetailPage from "../support/pages/admin-ui/manage/groups/group_details/GroupDetailPage";
 import AttributesTab from "../support/pages/admin-ui/manage/AttributesTab";
@@ -34,6 +33,11 @@ describe("Group test", () => {
   let users: { id: string; username: string }[] = [];
   const username = "test-user";
 
+  const duplicatedGroupErrorMessage = {
+    mainGroup: "Could not create group Top level group named '",
+    childGroup: "Could not create group Sibling group named '",
+  };
+
   before(async () => {
     users = await Promise.all(
       range(5).map((index) => {
@@ -50,13 +54,19 @@ describe("Group test", () => {
     );
   });
 
-  after(() => adminClient.deleteGroups());
+  after(
+    async () =>
+      await Promise.all([
+        adminClient.deleteGroups(),
+        ...range(5).map((index) => adminClient.deleteUser(username + index)),
+      ]),
+  );
 
   beforeEach(() => {
     loginPage.logIn();
     keycloakBefore();
     sidebarPage.goToGroups();
-    groupName = groupNamePrefix + uuid();
+    groupName = groupNamePrefix + crypto.randomUUID();
     groupNames.push(groupName);
   });
 
@@ -92,7 +102,10 @@ describe("Group test", () => {
         .assertNoGroupsInThisRealmEmptyStateMessageExist(false)
         .createGroup(groupName, false)
         .createGroup(groupName, false)
-        .assertNotificationCouldNotCreateGroupWithDuplicatedName(groupName);
+        .assertNotificationCouldNotCreateGroupWithDuplicatedName(
+          groupName,
+          duplicatedGroupErrorMessage.mainGroup,
+        );
       groupModal.closeModal();
       groupPage.searchGroup(groupName).assertGroupItemsEqual(1);
     });
@@ -111,6 +124,12 @@ describe("Group test", () => {
       groupPage
         .searchGroup("not-existent-group")
         .assertNoSearchResultsMessageExist(true);
+    });
+
+    it("Duplicate group from item bar", () => {
+      groupPage
+        .duplicateGroupItem(groupNames[0])
+        .assertNotificationGroupDuplicated();
     });
 
     it("Delete group from item bar", () => {
@@ -154,7 +173,6 @@ describe("Group test", () => {
             createdGroups[index % 3].id,
           );
         }),
-        adminClient.createUser({ username: "new", enabled: true }),
       ]);
     });
 
@@ -197,13 +215,6 @@ describe("Group test", () => {
           .searchGroup(predefinedGroups[0])
           .goToGroupChildGroupsTab(predefinedGroups[0])
           .assertGroupItemExist(predefinedGroups[1], true);
-      });
-
-      it("Navigate to sub-group details", () => {
-        searchGroupPage
-          .searchGlobal(predefinedGroups[1])
-          .goToGroupChildGroupsFromTree(predefinedGroups[1])
-          .assertGroupItemExist(predefinedGroups[2], true);
       });
     });
 
@@ -263,11 +274,12 @@ describe("Group test", () => {
     });
 
     // https://github.com/keycloak/keycloak-admin-ui/issues/2726
-    it.skip("Fail to create group with duplicated name", () => {
+    it("Fail to create group with duplicated name", () => {
       childGroupsTab
         .createGroup(predefinedGroups[2], false)
         .assertNotificationCouldNotCreateGroupWithDuplicatedName(
           predefinedGroups[2],
+          duplicatedGroupErrorMessage.childGroup,
         );
     });
 
@@ -321,8 +333,11 @@ describe("Group test", () => {
           );
         }),
         adminClient.createGroup(emptyGroup),
+        adminClient.createUser({ username: "new", enabled: true }),
       ]);
     });
+
+    after(() => adminClient.deleteUser("new"));
 
     beforeEach(() => {
       groupPage.goToGroupChildGroupsTab(predefinedGroups[0]);
@@ -386,6 +401,16 @@ describe("Group test", () => {
         .leaveGroupUserItem(users[1].username)
         .assertNotificationUserLeftTheGroup(1)
         .assertNoUsersFoundEmptyStateMessageExist(true);
+    });
+
+    it("Show memberships from item bar", () => {
+      sidebarPage.goToGroups();
+      groupPage.goToGroupChildGroupsTab(predefinedGroups[0]);
+      childGroupsTab.goToMembersTab();
+      membersTab
+        .showGroupMembershipsItem(users[3].username)
+        .assertGroupItemExist(predefinedGroups[0], true)
+        .cancelShowGroupMembershipsModal();
     });
   });
 
@@ -454,6 +479,7 @@ describe("Group test", () => {
 
   describe("Role mappings", () => {
     const roleMappingTab = new RoleMappingTab("group");
+
     beforeEach(() => {
       groupPage.goToGroupChildGroupsTab(predefinedGroups[0]);
       groupDetailPage.goToRoleMappingTab();
@@ -465,8 +491,10 @@ describe("Group test", () => {
 
     it("Assign roles from empty state", () => {
       roleMappingTab.assignRole();
-      groupDetailPage.createRoleMapping();
-      roleMappingTab.assign();
+      roleMappingTab
+        .changeRoleTypeFilter("roles")
+        .selectRow("default-roles-")
+        .assign();
     });
 
     it("Show and search roles", () => {

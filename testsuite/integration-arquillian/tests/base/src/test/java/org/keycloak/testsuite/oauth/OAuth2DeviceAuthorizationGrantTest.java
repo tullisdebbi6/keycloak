@@ -30,6 +30,7 @@ import org.junit.Test;
 import org.keycloak.OAuth2Constants;
 import org.keycloak.OAuthErrorException;
 import org.keycloak.admin.client.resource.ClientResource;
+import org.keycloak.admin.client.resource.ClientsResource;
 import org.keycloak.admin.client.resource.RealmResource;
 import org.keycloak.common.Profile;
 import org.keycloak.events.Errors;
@@ -42,6 +43,7 @@ import org.keycloak.protocol.oidc.representations.OIDCConfigurationRepresentatio
 import org.keycloak.representations.AccessToken;
 import org.keycloak.representations.UserInfo;
 import org.keycloak.representations.idm.ClientRepresentation;
+import org.keycloak.representations.idm.ClientScopeRepresentation;
 import org.keycloak.representations.idm.RealmRepresentation;
 import org.keycloak.representations.idm.UserRepresentation;
 import org.keycloak.testsuite.AbstractKeycloakTest;
@@ -67,11 +69,9 @@ import org.apache.http.impl.client.CloseableHttpClient;
 import org.keycloak.util.BasicAuthHelper;
 import org.openqa.selenium.Cookie;
 
-import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.LinkedList;
-
-import java.io.UnsupportedEncodingException;
 
 /**
  * @author <a href="mailto:h2-wada@nri.co.jp">Hiroyuki Wada</a>
@@ -84,6 +84,7 @@ public class OAuth2DeviceAuthorizationGrantTest extends AbstractKeycloakTest {
     private static final String DEVICE_APP = "test-device";
     private static final String DEVICE_APP_PUBLIC = "test-device-public";
     private static final String DEVICE_APP_PUBLIC_CUSTOM_CONSENT = "test-device-public-custom-consent";
+    private static final String DEVICE_APP_WITHOUT_SCOPES = "test-device-without-scopes";
     private static final String SHORT_DEVICE_FLOW_URL = "https://keycloak.org/device";
 
     @Rule
@@ -106,7 +107,7 @@ public class OAuth2DeviceAuthorizationGrantTest extends AbstractKeycloakTest {
 
         ClientRepresentation app = ClientBuilder.create()
                 .id(KeycloakModelUtils.generateId())
-                .clientId("test-device")
+                .clientId(DEVICE_APP)
                 .secret("secret")
                 .attribute(OAuth2DeviceConfig.OAUTH2_DEVICE_AUTHORIZATION_GRANT_ENABLED, "true")
                 .build();
@@ -125,6 +126,13 @@ public class OAuth2DeviceAuthorizationGrantTest extends AbstractKeycloakTest {
                 .attribute(ClientScopeModel.CONSENT_SCREEN_TEXT, "This is the custom consent screen text.")
                 .build();
         realm.client(appPublicCustomConsent);
+
+        ClientRepresentation appWithoutScopes = ClientBuilder.create().publicClient()
+                .id(KeycloakModelUtils.generateId())
+                .clientId(DEVICE_APP_WITHOUT_SCOPES)
+                .attribute(OAuth2DeviceConfig.OAUTH2_DEVICE_AUTHORIZATION_GRANT_ENABLED, "true")
+                .build();
+        realm.client(appWithoutScopes);
 
         userId = KeycloakModelUtils.generateId();
         UserRepresentation user = UserBuilder.create()
@@ -439,7 +447,7 @@ public class OAuth2DeviceAuthorizationGrantTest extends AbstractKeycloakTest {
 
         Assert.assertEquals(400, tokenResponse.getStatusCode());
         Assert.assertEquals("invalid_grant", tokenResponse.getError());
-        Assert.assertEquals("PKCE verification failed", tokenResponse.getErrorDescription());
+        Assert.assertEquals("PKCE verification failed: Code mismatch", tokenResponse.getErrorDescription());
     }
 
 
@@ -477,6 +485,35 @@ public class OAuth2DeviceAuthorizationGrantTest extends AbstractKeycloakTest {
         AccessToken token = oauth.verifyToken(tokenString);
 
         assertNotNull(token);
+    }
+
+    @Test
+    public void testPublicClientConsentWithoutScopes() throws Exception {
+
+        ClientsResource clients = realmsResouce().realm(REALM_NAME).clients();
+        ClientRepresentation clientRep = clients.findByClientId(DEVICE_APP_WITHOUT_SCOPES).get(0);
+        ClientResource client =  clients.get(clientRep.getId());
+
+        List<ClientScopeRepresentation> defaultClientScopes =  client.getDefaultClientScopes();
+        defaultClientScopes.forEach(scope -> client.removeDefaultClientScope(scope.getId()));
+
+        List<ClientScopeRepresentation> optionalClientScopes =  client.getOptionalClientScopes();
+        optionalClientScopes.forEach(scope -> client.removeOptionalClientScope(scope.getId()));
+
+        // Device Authorization Request from device
+        oauth.realm(REALM_NAME);
+        oauth.clientId(DEVICE_APP_WITHOUT_SCOPES);
+        OAuthClient.DeviceAuthorizationResponse response = oauth.doDeviceAuthorizationRequest(DEVICE_APP_WITHOUT_SCOPES, null);
+
+        Assert.assertEquals(200, response.getStatusCode());
+        assertNotNull(response.getVerificationUriComplete());
+        openVerificationPage(response.getVerificationUriComplete());
+        loginPage.assertCurrent();
+
+        // Do Login
+        oauth.fillLoginForm("device-login", "password");
+        // Consent
+        grantPage.assertCurrent();
     }
 
     @Test
@@ -953,6 +990,47 @@ public class OAuth2DeviceAuthorizationGrantTest extends AbstractKeycloakTest {
     }
 
     @Test
+    public void testConsentCancelCannotBeReusedAfterBackClicked() throws Exception {
+        // Device Authorization Request from device
+        oauth.realm(REALM_NAME);
+        oauth.clientId(DEVICE_APP);
+        OAuthClient.DeviceAuthorizationResponse response = oauth.doDeviceAuthorizationRequest(DEVICE_APP, "secret");
+
+        Assert.assertEquals(200, response.getStatusCode());
+        assertNotNull(response.getDeviceCode());
+        assertNotNull(response.getUserCode());
+        assertNotNull(response.getVerificationUri());
+        assertNotNull(response.getVerificationUriComplete());
+        Assert.assertEquals(60, response.getExpiresIn());
+        Assert.assertEquals(5, response.getInterval());
+
+        openVerificationPage(response.getVerificationUriComplete());
+        loginPage.assertCurrent();
+
+        // Do Login
+        oauth.fillLoginForm("device-login", "password");
+
+        // Consent
+        grantPage.assertCurrent();
+        grantPage.cancel();
+
+        //click back after cancel
+        grantPage.getDriver().navigate().back();
+
+        // Accept consent
+        grantPage.assertCurrent();
+        grantPage.assertGrants(OAuthGrantPage.PROFILE_CONSENT_TEXT, OAuthGrantPage.EMAIL_CONSENT_TEXT, OAuthGrantPage.ROLES_CONSENT_TEXT);
+        grantPage.accept();
+
+        verificationPage.assertDeniedPage();
+
+        OAuthClient.AccessTokenResponse tokenResponse = oauth.doDeviceTokenRequest(DEVICE_APP, "secret", response.getDeviceCode());
+
+        Assert.assertEquals(400, tokenResponse.getStatusCode());
+        Assert.assertEquals("access_denied", tokenResponse.getError());
+    }
+
+    @Test
     public void testNotFoundClient() throws Exception {
         oauth.realm(REALM_NAME);
         oauth.clientId("test-device-public2");
@@ -1053,12 +1131,7 @@ public class OAuth2DeviceAuthorizationGrantTest extends AbstractKeycloakTest {
             parameters.add(new BasicNameValuePair(OAuth2Constants.SCOPE, "profile"));
             parameters.add(new BasicNameValuePair(OAuth2Constants.SCOPE, "foo"));
 
-            UrlEncodedFormEntity formEntity;
-            try {
-                formEntity = new UrlEncodedFormEntity(parameters, "UTF-8");
-            } catch (UnsupportedEncodingException e) {
-                throw new RuntimeException(e);
-            }
+            UrlEncodedFormEntity formEntity = new UrlEncodedFormEntity(parameters, StandardCharsets.UTF_8);
             post.setEntity(formEntity);
 
             return new OAuthClient.DeviceAuthorizationResponse(client.execute(post));

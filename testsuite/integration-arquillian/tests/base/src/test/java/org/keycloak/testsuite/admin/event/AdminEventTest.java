@@ -18,16 +18,22 @@
 package org.keycloak.testsuite.admin.event;
 
 import org.apache.commons.lang3.RandomStringUtils;
+import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
 import org.keycloak.admin.client.resource.RealmResource;
 import org.keycloak.admin.client.resource.UserResource;
 import org.keycloak.events.admin.OperationType;
+import org.keycloak.events.admin.ResourceType;
+import org.keycloak.models.UserModel;
 import org.keycloak.representations.idm.AdminEventRepresentation;
 import org.keycloak.representations.idm.AuthDetailsRepresentation;
+import org.keycloak.representations.idm.OrganizationDomainRepresentation;
+import org.keycloak.representations.idm.OrganizationRepresentation;
 import org.keycloak.representations.idm.RealmEventsConfigRepresentation;
 import org.keycloak.representations.idm.RealmRepresentation;
 import org.keycloak.representations.idm.UserRepresentation;
+import org.keycloak.testsuite.AssertEvents;
 import org.keycloak.testsuite.admin.ApiUtil;
 import org.keycloak.testsuite.util.UserBuilder;
 import org.keycloak.util.JsonSerialization;
@@ -35,6 +41,7 @@ import org.keycloak.util.JsonSerialization;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 
 import static org.hamcrest.Matchers.allOf;
 import static org.hamcrest.Matchers.containsString;
@@ -110,6 +117,31 @@ public class AdminEventTest extends AbstractEventTest {
         assertThat(details.getClientId(), is(notNullValue()));
         assertThat(details.getUserId(), is(notNullValue()));
         assertThat(details.getIpAddress(), is(notNullValue()));
+    }
+
+    @Test
+    public void testEventDetails() {
+        String userId = createUser("user5");
+        UserRepresentation userRep = testRealmResource().users().get(userId).toRepresentation();
+        RealmRepresentation realmRep = testRealmResource().toRepresentation();
+        realmRep.setOrganizationsEnabled(true);
+        testRealmResource().update(realmRep);
+        OrganizationRepresentation orgRep = new OrganizationRepresentation();
+        orgRep.setName("test-org");
+        orgRep.setAlias(orgRep.getName());
+        orgRep.addDomain(new OrganizationDomainRepresentation(orgRep.getName()));
+        testRealmResource().organizations().create(orgRep).close();
+        orgRep = testRealmResource().organizations().list(-1, -1).get(0);
+        testRealmResource().organizations().get(orgRep.getId()).members().addMember(userId).close();
+        List<AdminEventRepresentation> events = events();
+        assertThat(events().size(), is(equalTo(4)));
+
+        AdminEventRepresentation event = events.get(0);
+        assertThat(event.getId(), AssertEvents.isUUID());
+        assertThat(event.getRealmId(), is(equalTo(realmName())));
+        assertThat(event.getOperationType(), is(equalTo("CREATE")));
+        assertThat(event.getResourceType(), is(equalTo(ResourceType.ORGANIZATION_MEMBERSHIP.name())));
+        assertThat(event.getDetails(), is(equalTo(Map.of(UserModel.USERNAME, userRep.getUsername(), UserModel.EMAIL, userRep.getEmail()))));
     }
 
     @Test
@@ -204,12 +236,39 @@ public class AdminEventTest extends AbstractEventTest {
         testingClient.testing("test").onAdminEvent(firstEvent, false);
         testingClient.testing("test").onAdminEvent(secondEvent, false);
 
-        List<AdminEventRepresentation> adminEvents = realm.getAdminEvents(null, null, null, null, null, null, null, null, null, null);
+        List<AdminEventRepresentation> adminEvents = realm.getAdminEvents(null, null, null, null, null, null, null, null, null, null, null, "desc");
         assertThat(adminEvents.size(), is(equalTo(2)));
         assertThat(adminEvents.get(0).getOperationType(), is(equalTo(OperationType.DELETE.toString())));
         assertThat(adminEvents.get(1).getOperationType(), is(equalTo(OperationType.CREATE.toString())));
+
+        adminEvents = realm.getAdminEvents(null, null, null, null, null, null, null, null, null, null, null, "asc");
+        assertThat(adminEvents.size(), is(equalTo(2)));
+        assertThat(adminEvents.get(1).getOperationType(), is(equalTo(OperationType.DELETE.toString())));
+        assertThat(adminEvents.get(0).getOperationType(), is(equalTo(OperationType.CREATE.toString())));
     }
 
+    @Test
+    public void filterByEpochTimeStamp() {
+        RealmResource realm = adminClient.realms().realm("test");
+        AdminEventRepresentation event = new AdminEventRepresentation();
+        event.setOperationType(OperationType.CREATE.toString());
+        event.setAuthDetails(new AuthDetailsRepresentation());
+        event.setRealmId(realm.toRepresentation().getId());
+
+        long currentTime = System.currentTimeMillis();
+
+        event.setTime(currentTime - 1000);
+        testingClient.testing("test").onAdminEvent(event, false);
+        event.setTime(currentTime);
+        testingClient.testing("test").onAdminEvent(event, false);
+        event.setTime(currentTime + 1000);
+        testingClient.testing("test").onAdminEvent(event, false);
+
+        List<AdminEventRepresentation> events = realm.getAdminEvents(null, null, null, null, null, null, null, currentTime, currentTime, null, null, null);
+        Assert.assertEquals(1, events.size());
+        events = realm.getAdminEvents(null, null, null, null, null, null, null, currentTime - 1000, currentTime + 1000, null, null, null);
+        Assert.assertEquals(3, events.size());
+    }
 
     private void checkUpdateRealmEventsConfigEvent(int size) {
         List<AdminEventRepresentation> events = events();

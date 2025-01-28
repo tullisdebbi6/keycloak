@@ -17,6 +17,7 @@
 
 package org.keycloak.testsuite.client;
 
+import java.nio.charset.StandardCharsets;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.security.PrivateKey;
@@ -39,7 +40,6 @@ import org.junit.Before;
 import org.junit.Test;
 import org.keycloak.OAuth2Constants;
 import org.keycloak.client.registration.Auth;
-import org.keycloak.common.Profile;
 import org.keycloak.common.util.KeycloakUriBuilder;
 import org.keycloak.connections.infinispan.InfinispanConnectionProvider;
 import org.keycloak.constants.ServiceUrlConstants;
@@ -59,7 +59,6 @@ import org.keycloak.representations.idm.ClientInitialAccessPresentation;
 import org.keycloak.representations.idm.RealmRepresentation;
 import org.keycloak.representations.oidc.OIDCClientRepresentation;
 import org.keycloak.testsuite.Assert;
-import org.keycloak.testsuite.ProfileAssume;
 import org.keycloak.testsuite.client.resources.TestApplicationResourceUrls;
 import org.keycloak.testsuite.client.resources.TestOIDCEndpointsApplicationResource;
 import org.keycloak.testsuite.rest.resource.TestingOIDCEndpointsApplicationResource;
@@ -172,8 +171,6 @@ public class OIDCJwksClientRegistrationTest extends AbstractClientRegistrationTe
 
     @Test
     public void testTwoClientsWithSameKid() throws Exception {
-        ProfileAssume.assumeFeatureDisabled(Profile.Feature.MAP_STORAGE);
-
         // Create client with manually set "kid"
         OIDCClientRepresentation response = createClientWithManuallySetKid("a1");
 
@@ -213,8 +210,6 @@ public class OIDCJwksClientRegistrationTest extends AbstractClientRegistrationTe
 
     @Test
     public void testPublicKeyCacheInvalidatedWhenUpdatingClient() throws Exception {
-        ProfileAssume.assumeFeatureDisabled(Profile.Feature.MAP_STORAGE);
-
         OIDCClientRepresentation response = createClientWithManuallySetKid("a1");
 
         Map<String, String> generatedKeys = testingClient.testApp().oidcClientEndpoints().getKeysAsPem();
@@ -268,8 +263,6 @@ public class OIDCJwksClientRegistrationTest extends AbstractClientRegistrationTe
 
     @Test
     public void createClientWithJWKSURI_rotateClientKeys() throws Exception {
-        ProfileAssume.assumeFeatureDisabled(Profile.Feature.MAP_STORAGE);
-
         OIDCClientRepresentation clientRep = createRep();
 
         clientRep.setGrantTypes(Collections.singletonList(OAuth2Constants.CLIENT_CREDENTIALS));
@@ -383,7 +376,7 @@ public class OIDCJwksClientRegistrationTest extends AbstractClientRegistrationTe
         CloseableHttpClient client = new DefaultHttpClient();
         try {
             HttpPost post = new HttpPost(requestUrl);
-            UrlEncodedFormEntity formEntity = new UrlEncodedFormEntity(parameters, "UTF-8");
+            UrlEncodedFormEntity formEntity = new UrlEncodedFormEntity(parameters, StandardCharsets.UTF_8);
             post.setEntity(formEntity);
             return client.execute(post);
         } finally {

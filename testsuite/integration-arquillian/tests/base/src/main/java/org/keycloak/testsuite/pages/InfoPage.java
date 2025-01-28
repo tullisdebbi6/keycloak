@@ -20,6 +20,7 @@ package org.keycloak.testsuite.pages;
 import org.jboss.arquillian.test.api.ArquillianResource;
 import org.keycloak.testsuite.util.DroneUtils;
 import org.keycloak.testsuite.util.OAuthClient;
+import org.keycloak.testsuite.util.UIUtils;
 import org.openqa.selenium.WebElement;
 import org.openqa.selenium.support.FindBy;
 
@@ -40,6 +41,9 @@ public class InfoPage extends LanguageComboboxAwarePage {
     @FindBy(linkText = "» Klicken Sie hier um fortzufahren")
     private WebElement clickToContinueDe;
 
+    @FindBy(linkText = "» Click here to proceed")
+    private WebElement clickToContinue;
+
     @FindBy(linkText = "« Zpět na aplikaci")
     private WebElement backToApplicationCs;
 
@@ -58,11 +62,15 @@ public class InfoPage extends LanguageComboboxAwarePage {
     }
 
     public void clickBackToApplicationLink() {
-        backToApplicationLink.click();
+        UIUtils.clickLink(backToApplicationLink);
     }
 
     public void clickToContinueDe() {
         clickToContinueDe.click();
+    }
+
+    public void clickToContinue() {
+        clickToContinue.click();
     }
 
     public void clickBackToApplicationLinkCs() {

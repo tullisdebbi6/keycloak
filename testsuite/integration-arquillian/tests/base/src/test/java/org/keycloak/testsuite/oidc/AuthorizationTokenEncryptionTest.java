@@ -50,9 +50,9 @@ import org.keycloak.util.JsonSerialization;
 import org.keycloak.util.TokenUtil;
 
 import java.io.IOException;
-import java.io.UnsupportedEncodingException;
 import java.net.MalformedURLException;
 import java.net.URISyntaxException;
+import java.nio.charset.StandardCharsets;
 import java.security.PrivateKey;
 import java.util.Map;
 
@@ -101,7 +101,7 @@ public class AuthorizationTokenEncryptionTest extends AbstractTestRealmKeycloakT
 
     @Test
     public void testAuthorizationEncryptionAlgRSA1_5EncA192GCM() {
-        testAuthorizationTokenSignatureAndEncryption(Algorithm.RS512, JWEConstants.RSA1_5, JWEConstants.A192GCM);
+        testAuthorizationTokenSignatureAndEncryption(Algorithm.EdDSA, JWEConstants.RSA1_5, JWEConstants.A192GCM);
     }
 
     @Test
@@ -123,7 +123,7 @@ public class AuthorizationTokenEncryptionTest extends AbstractTestRealmKeycloakT
 
     @Test
     public void testAuthorizationEncryptionAlgRSA_OAEPEncA256CBC_HS512() {
-        testAuthorizationTokenSignatureAndEncryption(Algorithm.PS512, JWEConstants.RSA_OAEP, JWEConstants.A256CBC_HS512);
+        testAuthorizationTokenSignatureAndEncryption(Algorithm.EdDSA, JWEConstants.RSA_OAEP, JWEConstants.A256CBC_HS512);
     }
 
     @Test
@@ -199,7 +199,7 @@ public class AuthorizationTokenEncryptionTest extends AbstractTestRealmKeycloakT
             JWEAlgorithmProvider algorithmProvider = getJweAlgorithmProvider(algAlgorithm);
             JWEEncryptionProvider encryptionProvider = getJweEncryptionProvider(encAlgorithm);
             byte[] decodedString = TokenUtil.jweKeyEncryptionVerifyAndDecode(decryptionKEK, jweStr, algorithmProvider, encryptionProvider);
-            String authorizationTokenString = new String(decodedString, "UTF-8");
+            String authorizationTokenString = new String(decodedString, StandardCharsets.UTF_8);
 
             // a nested JWT (signed and encrypted JWT) needs to set "JWT" to its JOSE Header's "cty" field
             JWEHeader jweHeader = (JWEHeader) getHeader(parts[0]);
@@ -210,7 +210,7 @@ public class AuthorizationTokenEncryptionTest extends AbstractTestRealmKeycloakT
             Assert.assertEquals("test-app", authorizationToken.getAudience()[0]);
             Assert.assertEquals("OpenIdConnect.AuthenticationProperties=2302984sdlk", authorizationToken.getOtherClaims().get("state"));
             Assert.assertNotNull(authorizationToken.getOtherClaims().get("code"));
-        } catch (JWEException | UnsupportedEncodingException e) {
+        } catch (JWEException e) {
             Assert.fail();
         } finally {
             clientResource = ApiUtil.findClientByClientId(adminClient.realm("test"), "test-app");

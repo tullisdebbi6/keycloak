@@ -25,10 +25,11 @@ import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
 import org.keycloak.connections.infinispan.InfinispanConnectionProvider;
-import org.keycloak.models.sessions.infinispan.InfinispanStickySessionEncoderProviderFactory;
 import org.keycloak.connections.infinispan.InfinispanUtil;
 import org.keycloak.representations.idm.RealmRepresentation;
+import org.keycloak.services.managers.AuthenticationSessionManager;
 import org.keycloak.sessions.StickySessionEncoderProvider;
+import org.keycloak.sessions.StickySessionEncoderProviderFactory;
 import org.keycloak.testsuite.pages.AppPage;
 import org.keycloak.testsuite.pages.LoginPage;
 import org.keycloak.testsuite.pages.LoginPasswordUpdatePage;
@@ -95,8 +96,8 @@ public class AuthenticationSessionClusterTest extends AbstractClusterTest {
             driver.navigate().to(testAppLoginNode1URL);
             String authSessionCookie = AuthenticationSessionFailoverClusterTest.getAuthSessionCookieValue(driver);
 
-            assertThat(authSessionCookie.length(), Matchers.greaterThan(36));
-            String route = authSessionCookie.substring(37);
+            Assert.assertNotEquals( -1, authSessionCookie.indexOf("."));
+            String route = authSessionCookie.substring(authSessionCookie.indexOf(".") + 1);
             visitedRoutes.add(route);
 
             // Drop all cookies before continue
@@ -117,7 +118,7 @@ public class AuthenticationSessionClusterTest extends AbstractClusterTest {
 
         // Disable route on backend server
         getTestingClientFor(backendNode(0)).server().run(session -> {
-            InfinispanStickySessionEncoderProviderFactory factory = (InfinispanStickySessionEncoderProviderFactory) session.getKeycloakSessionFactory().getProviderFactory(StickySessionEncoderProvider.class, "infinispan");
+            StickySessionEncoderProviderFactory factory = (StickySessionEncoderProviderFactory) session.getKeycloakSessionFactory().getProviderFactory(StickySessionEncoderProvider.class);
             factory.setShouldAttachRoute(false);
         });
 
@@ -126,7 +127,7 @@ public class AuthenticationSessionClusterTest extends AbstractClusterTest {
             driver.navigate().to(testAppLoginNode1URL);
             String authSessionCookie = AuthenticationSessionFailoverClusterTest.getAuthSessionCookieValue(driver);
 
-            Assert.assertEquals(36, authSessionCookie.length());
+            Assert.assertEquals(authSessionCookie.indexOf("."), -1);
 
             // Drop all cookies before continue
             driver.manage().deleteAllCookies();
@@ -134,14 +135,15 @@ public class AuthenticationSessionClusterTest extends AbstractClusterTest {
             // Check that route owner is always node1
             getTestingClientFor(backendNode(0)).server().run(session -> {
                 Cache authSessionCache = session.getProvider(InfinispanConnectionProvider.class).getCache(InfinispanConnectionProvider.AUTHENTICATION_SESSIONS_CACHE_NAME);
-                String keyOwner = InfinispanUtil.getTopologyInfo(session).getRouteName(authSessionCache, authSessionCookie);
+                String decodedAuthSessionId = new AuthenticationSessionManager(session).decodeBase64AndValidateSignature(authSessionCookie, false);
+                String keyOwner = InfinispanUtil.getTopologyInfo(session).getRouteName(authSessionCache, decodedAuthSessionId);
                 Assert.assertTrue(keyOwner.startsWith("node1"));
             });
         }
 
         // Revert route on backend server
         getTestingClientFor(backendNode(0)).server().run(session -> {
-            InfinispanStickySessionEncoderProviderFactory factory = (InfinispanStickySessionEncoderProviderFactory) session.getKeycloakSessionFactory().getProviderFactory(StickySessionEncoderProvider.class, "infinispan");
+            StickySessionEncoderProviderFactory factory = (StickySessionEncoderProviderFactory) session.getKeycloakSessionFactory().getProviderFactory(StickySessionEncoderProvider.class);
             factory.setShouldAttachRoute(true);
         });
     }

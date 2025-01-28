@@ -1,4 +1,3 @@
-import { v4 as uuid } from "uuid";
 import LoginPage from "../support/pages/LoginPage";
 import SidebarPage from "../support/pages/admin-ui/SidebarPage";
 import UserEventsTab, {
@@ -34,7 +33,7 @@ describe.skip("Events tests", () => {
   const eventsTestUser = {
     eventsTestUserId: "",
     userRepresentation: {
-      username: "events-test" + uuid(),
+      username: "events-test" + crypto.randomUUID(),
       enabled: true,
       credentials: [{ value: "events-test" }],
     },
@@ -269,9 +268,10 @@ describe.skip("Events tests", () => {
   });
 
   describe("Admin events list", () => {
-    const realmName = uuid();
+    const realmName = crypto.randomUUID();
 
     before(() => adminClient.createRealm(realmName));
+
     after(() => adminClient.deleteRealm(realmName));
 
     beforeEach(() => {
@@ -474,7 +474,7 @@ describe.skip("Events tests", () => {
     });
 
     it("Check a11y violations on admin events tab", () => {
-      eventsPage.goToAdminEventsTab;
+      eventsPage.goToAdminEventsTab();
       cy.checkA11y();
     });
 
